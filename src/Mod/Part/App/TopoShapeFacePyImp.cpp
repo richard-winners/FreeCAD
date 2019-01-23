@@ -706,6 +706,7 @@ Py::Object TopoShapeFacePy::getSurface() const
 {
     const TopoDS_Face& f = TopoDS::Face(getTopoShapePtr()->getShape());
     BRepAdaptor_Surface adapt(f);
+    Base::PyObjectBase* surface = 0;
     switch(adapt.GetType())
     {
     case GeomAbs_Plane:
@@ -714,7 +715,8 @@ Py::Object TopoShapeFacePy::getSurface() const
             Handle(Geom_Plane) this_surf = Handle(Geom_Plane)::DownCast
                 (plane->handle());
             this_surf->SetPln(adapt.Plane());
-            return Py::Object(new PlanePy(plane),true);
+            surface = new PlanePy(plane);
+            break;
         }
     case GeomAbs_Cylinder:
         {
@@ -722,7 +724,8 @@ Py::Object TopoShapeFacePy::getSurface() const
             Handle(Geom_CylindricalSurface) this_surf = Handle(Geom_CylindricalSurface)::DownCast
                 (cylinder->handle());
             this_surf->SetCylinder(adapt.Cylinder());
-            return Py::Object(new CylinderPy(cylinder),true);
+            surface = new CylinderPy(cylinder);
+            break;
         }
     case GeomAbs_Cone:
         {
@@ -730,7 +733,8 @@ Py::Object TopoShapeFacePy::getSurface() const
             Handle(Geom_ConicalSurface) this_surf = Handle(Geom_ConicalSurface)::DownCast
                 (cone->handle());
             this_surf->SetCone(adapt.Cone());
-            return Py::Object(new ConePy(cone),true);
+            surface = new ConePy(cone);
+            break;
         }
     case GeomAbs_Sphere:
         {
@@ -738,7 +742,8 @@ Py::Object TopoShapeFacePy::getSurface() const
             Handle(Geom_SphericalSurface) this_surf = Handle(Geom_SphericalSurface)::DownCast
                 (sphere->handle());
             this_surf->SetSphere(adapt.Sphere());
-            return Py::Object(new SpherePy(sphere),true);
+            surface = new SpherePy(sphere);
+            break;
         }
     case GeomAbs_Torus:
         {
@@ -746,17 +751,20 @@ Py::Object TopoShapeFacePy::getSurface() const
             Handle(Geom_ToroidalSurface) this_surf = Handle(Geom_ToroidalSurface)::DownCast
                 (toroid->handle());
             this_surf->SetTorus(adapt.Torus());
-            return Py::Object(new ToroidPy(toroid),true);
+            surface = new ToroidPy(toroid);
+            break;
         }
     case GeomAbs_BezierSurface:
         {
             GeomBezierSurface* surf = new GeomBezierSurface(adapt.Bezier());
-            return Py::Object(new BezierSurfacePy(surf),true);
+            surface = new BezierSurfacePy(surf);
+            break;
         }
     case GeomAbs_BSplineSurface:
         {
             GeomBSplineSurface* surf = new GeomBSplineSurface(adapt.BSpline());
-            return Py::Object(new BSplineSurfacePy(surf),true);
+            surface = new BSplineSurfacePy(surf);
+            break;
         }
     case GeomAbs_SurfaceOfRevolution:
         {
@@ -768,7 +776,8 @@ Py::Object TopoShapeFacePy::getSurface() const
             }
             if (!rev.IsNull()) {
                 GeomSurfaceOfRevolution* surf = new GeomSurfaceOfRevolution(rev);
-                return Py::Object(new SurfaceOfRevolutionPy(surf),true);
+                surface = new SurfaceOfRevolutionPy(surf);
+                break;
             }
             else {
                 throw Py::RuntimeError("Failed to convert to surface of revolution");
@@ -784,7 +793,8 @@ Py::Object TopoShapeFacePy::getSurface() const
             }
             if (!ext.IsNull()) {
                 GeomSurfaceOfExtrusion* surf = new GeomSurfaceOfExtrusion(ext);
-                return Py::Object(new SurfaceOfExtrusionPy(surf),true);
+                surface = new SurfaceOfExtrusionPy(surf);
+                break;
             }
             else {
                 throw Py::RuntimeError("Failed to convert to surface of extrusion");
@@ -800,7 +810,8 @@ Py::Object TopoShapeFacePy::getSurface() const
             }
             if (!off.IsNull()) {
                 GeomOffsetSurface* surf = new GeomOffsetSurface(off);
-                return Py::Object(new OffsetSurfacePy(surf),true);
+                surface = new OffsetSurfacePy(surf);
+                break;
             }
             else {
                 throw Py::RuntimeError("Failed to convert to offset surface");
@@ -808,6 +819,11 @@ Py::Object TopoShapeFacePy::getSurface() const
         }
     case GeomAbs_OtherSurface:
         break;
+    }
+
+    if (surface) {
+        surface->setNotTracking();
+        return Py::asObject(surface);
     }
 
     throw Py::TypeError("undefined surface type");

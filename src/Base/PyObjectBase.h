@@ -196,7 +196,8 @@ class BaseExport PyObjectBase : public PyObject
     enum Status {
         Valid = 0,
         Immutable = 1,
-        Notify = 2
+        Notify = 2,
+        NoTrack = 3
     };
 
 protected:
@@ -306,6 +307,14 @@ public:
     }
 
     void startNotify();
+
+    void setNotTracking(bool on=true) {
+        StatusBits.set(NoTrack, on);
+    }
+
+    bool isNotTracking() const {
+        return StatusBits.test(NoTrack);
+    }
 
     typedef void* PointerType;
 
