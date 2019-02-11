@@ -814,7 +814,6 @@ Py::Object TopoShapeFacePy::getSurface() const
         surface->setNotTracking();
         return Py::asObject(surface);
     }
-
     throw Py::TypeError("undefined surface type");
 }
 

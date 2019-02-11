@@ -1872,7 +1872,7 @@ PyObject* TopoShapePy::tessellate(PyObject *args)
         if (PyObject_IsTrue(ok))
             BRepTools::Clean(getTopoShapePtr()->getShape());
         getTopoShapePtr()->getFaces(Points, Facets,tolerance);
-        Py::Tuple tuple(2);
+        Py::Tuple tuple(3);
         Py::List vertex;
         for (std::vector<Base::Vector3d>::const_iterator it = Points.begin();
             it != Points.end(); ++it)
@@ -1888,6 +1888,39 @@ PyObject* TopoShapePy::tessellate(PyObject *args)
             facet.append(f);
         }
         tuple.setItem(1, facet);
+
+        // now go through the tessellated facets and see if they are valid, and if not, then we add them to the
+        // list that is the third tuple entry, index of self intersectiong faces
+        Py::List bad_faces;
+
+        // get the pointer to the shape
+        const TopoDS_Shape& ss = getTopoShapePtr()->getShape();
+
+        // initialize face list
+        BRepExtrema_ShapeList TheFaces;
+
+        // now add faces to the list so we can check them via index
+        for (TopExp_Explorer anIter (ss, TopAbs_FACE); anIter.More(); anIter.Next())
+        {
+            TheFaces.Append (static_cast<const TopoDS_Face&> (anIter.Current()));
+        }
+
+        for (Standard_Integer aFaceIdx = 0; aFaceIdx < TheFaces.Size(); ++aFaceIdx)
+        {
+           TopLoc_Location aLocation;
+
+           Handle(Poly_Triangulation) aTriangulation = BRep_Tool::Triangulation (TheFaces (aFaceIdx), aLocation);
+
+           if (aTriangulation.IsNull())
+           {
+              
+              cout << "individual triangulation was null. Face Index: " << aFaceIdx << " \n";
+              bad_faces.append(Py::Long((long)aFaceIdx));
+           }
+        }
+        // now set the tuple last element
+        tuple.setItem(2, bad_faces);
+
         return Py::new_reference_to(tuple);
     }
     catch (Standard_Failure& e) {
@@ -2406,6 +2439,7 @@ PyObject* TopoShapePy::proximity(PyObject *args)
     BRepExtrema_ShapeProximity proximity;
     proximity.LoadShape1 (s1);
     proximity.LoadShape2 (s2);
+    
     if (tol > 0.0)
         proximity.SetTolerance (tol);
     proximity.Perform();
