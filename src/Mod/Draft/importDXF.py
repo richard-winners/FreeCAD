@@ -51,6 +51,7 @@ CURRENTDXFLIB = 1.39 # the minimal version of the dxfLibrary needed to run
 import sys, FreeCAD, os, Part, math, re, string, Mesh, Draft, DraftVecUtils, DraftGeomUtils
 from Draft import _Dimension, _ViewProviderDimension
 from FreeCAD import Vector
+import dxfReader
 
 gui = FreeCAD.GuiUp
 draftui = None
@@ -61,7 +62,7 @@ if gui:
     except (AttributeError,NameError):
         draftui = None
         
-dxfReader = None
+# dxfReader = None
 dxfColorMap = None
 dxfLibrary = None
 
@@ -84,66 +85,20 @@ def errorDXFLib(gui):
             p = None
             p = ArchCommands.download(baseurl+f,force=True)
             if not p:
-                if gui:
-                    from PySide import QtGui, QtCore
-                    from DraftTools import translate
-                    if float(FreeCAD.Version()[0]+"."+FreeCAD.Version()[1]) >= 0.17:
-                        message = translate("Draft","""Download of dxf libraries failed.
-Please install the dxf Library addon manually
-from menu Tools -> Addon Manager""")
-                    else:
-                        message = translate("Draft","""Download of dxf libraries failed.
-Please download and install them manually.
-See complete instructions at
-http://www.freecadweb.org/wiki/Dxf_Importer_Install""")
-                    QtGui.QMessageBox.information(None,"",message)
+                FreeCAD.Console.PrintWarning("The DXF import/export libraries needed by FreeCAD to handle the DXF format are not installed.\n")
+                if float(FreeCAD.Version()[0]+"."+FreeCAD.Version()[1]) >= 0.17:
+                    FreeCAD.Console.PrintWarning("Please install the dxf Library addon from Tools -> Addons Manager\n")
                 else:
-                    FreeCAD.Console.PrintWarning("The DXF import/export libraries needed by FreeCAD to handle the DXF format are not installed.\n")
-                    if float(FreeCAD.Version()[0]+"."+FreeCAD.Version()[1]) >= 0.17:
-                        FreeCAD.Console.PrintWarning("Please install the dxf Library addon from Tools -> Addons Manager\n")
-                    else:
-                        FreeCAD.Console.PrintWarning("Please check https://github.com/yorikvanhavre/Draft-dxf-importer\n")
+                    FreeCAD.Console.PrintWarning("Please check https://github.com/yorikvanhavre/Draft-dxf-importer\n")
                 break
         progressbar.stop()
         sys.path.append(FreeCAD.ConfigGet("UserAppData"))
     else:
-        if gui:
-            from PySide import QtGui, QtCore
-            from DraftTools import translate
-            if float(FreeCAD.Version()[0]+"."+FreeCAD.Version()[1]) >= 0.17:
-                message = translate('draft',"""The DXF import/export libraries needed by FreeCAD to handle
-the DXF format were not found on this system.
-Please either enable FreeCAD to download these libraries:
-  1 - Load Draft workbench
-  2 - Menu Edit > Preferences > Import-Export > DXF > Enable downloads
-Or install the libraries manually by installing the dxf-Library addon
-from menu Tools -> Addon Manager.
-To enabled FreeCAD to download these libraries, answer Yes.""")
-            else:
-                message = translate('draft',"""The DXF import/export libraries needed by FreeCAD to handle
-the DXF format were not found on this system.
-Please either enable FreeCAD to download these libraries:
-  1 - Load Draft workbench
-  2 - Menu Edit > Preferences > Import-Export > DXF > Enable downloads
-Or download these libraries manually, as explained on
-https://github.com/yorikvanhavre/Draft-dxf-importer
-To enabled FreeCAD to download these libraries, answer Yes.""")
-            if sys.version_info.major < 3:
-                if not isinstance(message,unicode):
-                    message = message.decode('utf8')
-            reply = QtGui.QMessageBox.question(None,"",message,
-                QtGui.QMessageBox.Yes | QtGui.QMessageBox.No, QtGui.QMessageBox.No)
-            if reply == QtGui.QMessageBox.Yes:
-                p.SetBool("dxfAllowDownload",True)
-                errorDXFLib(gui)
-            if reply == QtGui.QMessageBox.No:
-                pass
+        FreeCAD.Console.PrintWarning("The DXF import/export libraries needed by FreeCAD to handle the DXF format are not installed.\n")
+        if float(FreeCAD.Version()[0]+"."+FreeCAD.Version()[1]) >= 0.17:
+            FreeCAD.Console.PrintWarning("Please install the dxf Library addon from Tools -> Addons Manager\n")
         else:
-            FreeCAD.Console.PrintWarning("The DXF import/export libraries needed by FreeCAD to handle the DXF format are not installed.\n")
-            if float(FreeCAD.Version()[0]+"."+FreeCAD.Version()[1]) >= 0.17:
-                FreeCAD.Console.PrintWarning("Please install the dxf Library addon from Tools -> Addons Manager\n")
-            else:
-                FreeCAD.Console.PrintWarning("Please check https://github.com/yorikvanhavre/Draft-dxf-importer\n")
+            FreeCAD.Console.PrintWarning("Please check https://github.com/yorikvanhavre/Draft-dxf-importer\n")
 
 
 def getDXFlibs():
@@ -1046,9 +1001,9 @@ def processdxf(document,filename,getShapes=False,reComputeFlag=True):
     "Recompute causes OpenSCAD import to loop, supply flag to make conditional"
     "this does the translation of the dxf contents into FreeCAD Part objects"
     global drawing # for debugging - so drawing is still accessible to python after the script ran
-    if not dxfReader:
-        getDXFlibs()
-        readPreferences()
+    # if not dxfReader:
+    #     getDXFlibs()
+    readPreferences()
     FreeCAD.Console.PrintMessage("opening "+filename+"...\n")
     drawing = dxfReader.readDXF(filename)
     global layers
@@ -1069,7 +1024,8 @@ def processdxf(document,filename,getShapes=False,reComputeFlag=True):
     # drawing lines
 
     lines = drawing.entities.get_type("line")
-    if lines: FreeCAD.Console.PrintMessage("drawing "+str(len(lines))+" lines...\n")
+    if lines:
+        FreeCAD.Console.PrintMessage("drawing "+str(len(lines))+" lines...\n")
     for line in lines:
         if dxfImportLayouts or (not rawValue(line,67)):
             shape = drawLine(line)
@@ -1090,9 +1046,10 @@ def processdxf(document,filename,getShapes=False,reComputeFlag=True):
                         shapes.append(shape.Shape)
                 elif dxfMakeBlocks:
                     addToBlock(shape,line.layer)
-                else:
-                    newob = addObject(shape,"Line",line.layer)
-                    if gui: formatObject(newob,line)
+                # else:
+                #     newob = addObject(shape,"Line",line.layer)
+                #     if gui:
+                #         formatObject(newob,line)
 
     # drawing polylines
 
@@ -1177,17 +1134,6 @@ def processdxf(document,filename,getShapes=False,reComputeFlag=True):
             edges.extend(s.Edges)
         if len(edges) > (100):
             FreeCAD.Console.PrintMessage(str(len(edges))+" edges to join\n")
-            if FreeCAD.GuiUp:
-                from PySide import QtGui
-                d = QtGui.QMessageBox()
-                d.setText("Warning: High number of entities to join (>100)")
-                d.setInformativeText("This might take a long time or even freeze your computer. Are you sure? You can also disable the \"join geometry\" setting in DXF import preferences")
-                d.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
-                d.setDefaultButton(QtGui.QMessageBox.Cancel)
-                res = d.exec_()
-                if res == QtGui.QMessageBox.Cancel:
-                    FreeCAD.Console.PrintMessage("Aborted\n")
-                    return
         shapes = DraftGeomUtils.findWires(edges)
         for s in shapes:
             newob = addObject(s)
@@ -1525,9 +1471,9 @@ def processdxf(document,filename,getShapes=False,reComputeFlag=True):
 
     print("done processing")
 
-    if reComputeFlag :
-       doc.recompute()
-       print("recompute done")
+    # if reComputeFlag :
+    #    doc.recompute()
+    #    print("recompute done")
 
     FreeCAD.Console.PrintMessage("successfully imported "+filename+"\n")
     if badobjects:

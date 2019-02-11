@@ -47,20 +47,13 @@ __url__ = "http://www.freecadweb.org"
 
 '''The Draft module offers a range of tools to create and manipulate basic 2D objects'''
 
-import FreeCAD, math, sys, os, DraftVecUtils, Draft_rc, WorkingPlane
+import FreeCAD, math, sys, os, DraftVecUtils, WorkingPlane
 from FreeCAD import Vector
 
-if FreeCAD.GuiUp:
-    import FreeCADGui
-    from PySide import QtCore
-    from PySide.QtCore import QT_TRANSLATE_NOOP
-    gui = True
-    #from DraftGui import translate
-else:
-    def QT_TRANSLATE_NOOP(ctxt,txt):
-        return txt
-    #print("FreeCAD Gui not present. Draft module will have some features disabled.")
-    gui = False
+def QT_TRANSLATE_NOOP(ctxt,txt):
+    return txt
+#print("FreeCAD Gui not present. Draft module will have some features disabled.")
+gui = False
 
 def translate(ctx,txt):
     return txt
@@ -517,7 +510,6 @@ def select(objs=None):
 def loadSvgPatterns():
     "loads the default Draft SVG patterns and custom patters if available"
     import importSVG
-    from PySide import QtCore
     FreeCAD.svgpatterns = {}
     # getting default patterns
     patfiles = QtCore.QDir(":/patterns").entryList()
@@ -555,59 +547,6 @@ def loadTexture(filename,size=None):
     """loadTexture(filename,[size]): returns a SoSFImage from a file. If size
     is defined (an int or a tuple), and provided the input image is a png file,
     it will be scaled to match the given size."""
-    if gui:
-        from pivy import coin
-        from PySide import QtGui,QtSvg
-        try:
-            p = QtGui.QImage(filename)
-            # buggy - TODO: allow to use resolutions
-            #if size and (".svg" in filename.lower()):
-            #    # this is a pattern, not a texture
-            #    if isinstance(size,int):
-            #        size = (size,size)
-            #    svgr = QtSvg.QSvgRenderer(filename)
-            #    p = QtGui.QImage(size[0],size[1],QtGui.QImage.Format_ARGB32)
-            #    pa = QtGui.QPainter()
-            #    pa.begin(p)
-            #    svgr.render(pa)
-            #    pa.end()
-            #else:
-            #    p = QtGui.QImage(filename)
-            size = coin.SbVec2s(p.width(), p.height())
-            buffersize = p.byteCount()
-            numcomponents = int (float(buffersize) / ( size[0] * size[1] ))
-
-            img = coin.SoSFImage()
-            width = size[0]
-            height = size[1]
-            bytes = ""
-
-            for y in range(height):
-                #line = width*numcomponents*(height-(y));
-                for x in range(width):
-                    rgb = p.pixel(x,y)
-                    if numcomponents == 1:
-                        bytes = bytes + chr(QtGui.qGray( rgb ))
-                    elif numcomponents == 2:
-                        bytes = bytes + chr(QtGui.qGray( rgb ))
-                        bytes = bytes + chr(QtGui.qAlpha( rgb ))
-                    elif numcomponents == 3:
-                        bytes = bytes + chr(QtGui.qRed( rgb ))
-                        bytes = bytes + chr(QtGui.qGreen( rgb ))
-                        bytes = bytes + chr(QtGui.qBlue( rgb ))
-                    elif numcomponents == 4:
-                        bytes = bytes + chr(QtGui.qRed( rgb ))
-                        bytes = bytes + chr(QtGui.qGreen( rgb ))
-                        bytes = bytes + chr(QtGui.qBlue( rgb ))
-                        bytes = bytes + chr(QtGui.qAlpha( rgb ))
-                    #line += numcomponents
-
-            img.setValue(size, numcomponents, bytes)
-        except:
-            print("Draft: unable to load texture")
-            return None
-        else:
-            return img
     return None
 
 def getMovableChildren(objectslist,recursive=True):
@@ -3744,69 +3683,6 @@ class _ViewProviderDraft:
     def setDisplayMode(self, mode):
         return mode
 
-    def onChanged(self, vobj, prop):
-        # treatment of patterns and image textures
-        if prop in ["TextureImage","Pattern","DiffuseColor"]:
-            if hasattr(self.Object,"Shape"):
-                if self.Object.Shape.Faces:
-                    from pivy import coin
-                    from PySide import QtCore
-                    path = None
-                    if hasattr(vobj,"TextureImage"):
-                        if vobj.TextureImage:
-                            path = vobj.TextureImage
-                    if not path:
-                        if hasattr(vobj,"Pattern"):
-                            if str(vobj.Pattern) in list(svgpatterns().keys()):
-                                path = svgpatterns()[vobj.Pattern][1]
-                            else:
-                                path = "None"
-                    if path and vobj.RootNode:
-                        if vobj.RootNode.getChildren().getLength() > 2:
-                            if vobj.RootNode.getChild(2).getChildren().getLength() > 0:
-                                if vobj.RootNode.getChild(2).getChild(0).getChildren().getLength() > 2:
-                                    r = vobj.RootNode.getChild(2).getChild(0).getChild(2)
-                                    i = QtCore.QFileInfo(path)
-                                    if self.texture:
-                                        r.removeChild(self.texture)
-                                        self.texture = None
-                                    if self.texcoords:
-                                        r.removeChild(self.texcoords)
-                                        self.texcoords = None
-                                    if i.exists():
-                                        size = None
-                                        if ".SVG" in path.upper():
-                                            size = getParam("HatchPatternResolution",128)
-                                            if not size:
-                                                size = 128
-                                        im = loadTexture(path, size)
-                                        if im:
-                                            self.texture = coin.SoTexture2()
-                                            self.texture.image = im
-                                            r.insertChild(self.texture,1)
-                                            if size:
-                                                s =1
-                                                if hasattr(vobj,"PatternSize"):
-                                                    if vobj.PatternSize:
-                                                        s = vobj.PatternSize
-                                                self.texcoords = coin.SoTextureCoordinatePlane()
-                                                self.texcoords.directionS.setValue(s,0,0)
-                                                self.texcoords.directionT.setValue(0,s,0)
-                                                r.insertChild(self.texcoords,2)
-        elif prop == "PatternSize":
-            if hasattr(self,"texcoords"):
-                if self.texcoords:
-                    s = 1
-                    if vobj.PatternSize:
-                        s = vobj.PatternSize
-                    vS = FreeCAD.Vector(self.texcoords.directionS.getValue().getValue())
-                    vT = FreeCAD.Vector(self.texcoords.directionT.getValue().getValue())
-                    vS.Length = s
-                    vT.Length = s
-                    self.texcoords.directionS.setValue(vS.x,vS.y,vS.z)
-                    self.texcoords.directionT.setValue(vT.x,vT.y,vT.z)
-        return
-
     def execute(self,vobj):
         return
 
@@ -6347,15 +6223,6 @@ class ViewProviderWorkingPlaneProxy:
     def doubleClicked(self,vobj):
         FreeCADGui.runCommand("Draft_SelectPlane")
         return True
-        
-    def setupContextMenu(self,vobj,menu):
-        from PySide import QtCore,QtGui
-        action1 = QtGui.QAction(QtGui.QIcon(":/icons/Draft_SelectPlane.svg"),"Write camera position",menu)
-        QtCore.QObject.connect(action1,QtCore.SIGNAL("triggered()"),self.writeCamera)
-        menu.addAction(action1)
-        action2 = QtGui.QAction(QtGui.QIcon(":/icons/Draft_SelectPlane.svg"),"Write objects state",menu)
-        QtCore.QObject.connect(action2,QtCore.SIGNAL("triggered()"),self.writeState)
-        menu.addAction(action2)
         
     def writeCamera(self):
         if hasattr(self,"Object"):
