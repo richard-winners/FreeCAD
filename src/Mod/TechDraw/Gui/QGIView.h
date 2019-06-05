@@ -26,9 +26,9 @@
 #include <QGraphicsItemGroup>
 #include <QPen>
 #include <QFont>
+#include <QObject>
 
 #include <App/DocumentObject.h>
-#include <App/PropertyLinks.h>
 #include <Base/Parameter.h>
 #include <Gui/ViewProvider.h>
 
@@ -46,12 +46,16 @@ class QGCustomBorder;
 class QGCustomLabel;
 class QGCustomText;
 class QGICaption;
+class MDIViewPage;
+class QGIViewClip;
+class QGCustomImage;
 
-class TechDrawGuiExport  QGIView : public QGraphicsItemGroup
+class TechDrawGuiExport  QGIView : public QObject, public QGraphicsItemGroup
 {
+    Q_OBJECT
 public:
     QGIView();
-    virtual ~QGIView() = default;
+    virtual ~QGIView();
 
     enum {Type = QGraphicsItem::UserType + 101};
     int type() const override { return Type;}
@@ -61,7 +65,8 @@ public:
                         const QStyleOptionGraphicsItem *option,
                         QWidget *widget = nullptr ) override;
 
-    const char * getViewName() const;
+    const char *      getViewName() const;
+    const std::string getViewNameAsString() const;
     void setViewFeature(TechDraw::DrawView *obj);
     TechDraw::DrawView * getViewObject() const;
 
@@ -69,11 +74,14 @@ public:
     virtual void toggleCache(bool state);
     virtual void updateView(bool update = false);
     virtual void drawBorder(void);
-    virtual void isVisible(bool state) { m_visibility = state; };
-    virtual bool isVisible(void) {return m_visibility;};
+    virtual void isVisible(bool state) { m_visibility = state; }
+    virtual bool isVisible(void) {return m_visibility;}
     virtual void draw(void);
     virtual void drawCaption(void);
     virtual void rotateView(void);
+    void makeMark(double x, double y);
+    void makeMark(Base::Vector3d v);
+
 
     /** Methods to ensure that Y-Coordinates are orientated correctly.
      * @{ */
@@ -83,15 +91,21 @@ public:
     void isInnerView(bool state) { m_innerView = state; }
     double getYInClip(double y);
     /** @} */
+    QGIViewClip* getClipGroup(void);
+
 
     void alignTo(QGraphicsItem*, const QString &alignment);
-    void setLocked(bool /*state*/ = true) { locked = true; }
+    void setLocked(bool b) { m_locked = b; }
 
     virtual QColor getNormalColor(void);
     virtual QColor getPreColor(void);
     virtual QColor getSelectColor(void);
     
     static Gui::ViewProvider* getViewProvider(App::DocumentObject* obj);
+    MDIViewPage* getMDIViewPage(void) const;
+    // Mouse handling
+    virtual void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
+    boost::signals2::signal<void (QGIView*, QPointF)> signalSelectPoint;
 
 protected:
     QGIView* getQGIVByName(std::string name);
@@ -99,11 +113,10 @@ protected:
     virtual QVariant itemChange(GraphicsItemChange change, const QVariant &value) override;
     // Mouse handling
     virtual void mouseMoveEvent(QGraphicsSceneMouseEvent *event) override;
-    virtual void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
     // Preselection events:
     virtual void hoverEnterEvent(QGraphicsSceneHoverEvent *event) override;
     virtual void hoverLeaveEvent(QGraphicsSceneHoverEvent *event) override;
-    virtual QRectF customChildrenBoundingRect(void);
+    virtual QRectF customChildrenBoundingRect(void) const;
     void dumpRect(char* text, QRectF r);
 
     QString getPrefFont(void);
@@ -116,7 +129,7 @@ protected:
     QHash<QString, QGraphicsItem*> alignHash;
     //std::string alignMode;
     //QGIView* alignAnchor;
-    bool locked;
+    bool m_locked;
     bool borderVisible;
     bool m_visibility;
     bool m_innerView;                                                  //View is inside another View
@@ -131,7 +144,11 @@ protected:
     QGCustomLabel* m_label;
     QGCustomBorder* m_border;
     QGICaption* m_caption;
+    QGCustomImage* m_lock;
     QPen m_decorPen;
+    double m_lockWidth;
+    double m_lockHeight;
+
 };
 
 } // namespace

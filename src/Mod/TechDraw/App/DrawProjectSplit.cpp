@@ -368,7 +368,7 @@ std::vector<TopoDS_Edge> DrawProjectSplit::split1Edge(TopoDS_Edge e, std::vector
                 result.push_back(e1);
             }
         }
-        catch (Standard_Failure) {
+        catch (Standard_Failure&) {
             Base::Console().Message("LOG - DPS::split1Edge failed building edge segment\n");
         }
     }
@@ -493,7 +493,7 @@ std::string edgeSortItem::dump(void)
             result = true;
         }
     } else if (!DrawUtil::fpCompare(e1.endAngle, e2.endAngle)) {
-        if (e1.endAngle < e2.startAngle) {
+        if (e1.endAngle < e2.endAngle) {
             result = true;
         } 
     } else if (e1.idx < e2.idx) {

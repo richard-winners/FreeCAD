@@ -24,6 +24,7 @@
 #include "PreCompiled.h"
 
 #ifndef _PreComp_
+# include <QAction>
 #endif
 
 #include "ui_TaskThicknessParameters.h"
@@ -66,6 +67,9 @@ TaskThicknessParameters::TaskThicknessParameters(ViewProviderDressUp *DressUpVie
     ui->Value->selectAll();
     QMetaObject::invokeMethod(ui->Value, "setFocus", Qt::QueuedConnection);
 
+    // Bind input fields to properties
+    ui->Value->bind(pcThickness->Value);
+
     bool r = pcThickness->Reversed.getValue();
     ui->checkReverse->setChecked(r);
 
@@ -92,6 +96,7 @@ TaskThicknessParameters::TaskThicknessParameters(ViewProviderDressUp *DressUpVie
 
     // Create context menu
     QAction* action = new QAction(tr("Remove"), this);
+    action->setShortcut(QString::fromLatin1("Del"));
     ui->listWidgetReferences->addAction(action);
     connect(action, SIGNAL(triggered()), this, SLOT(onRefDeleted()));
     ui->listWidgetReferences->setContextMenuPolicy(Qt::ActionsContextMenu);
@@ -100,7 +105,7 @@ TaskThicknessParameters::TaskThicknessParameters(ViewProviderDressUp *DressUpVie
     ui->modeComboBox->setCurrentIndex(mode);
 
     int join = pcThickness->Join.getValue();
-    ui->modeComboBox->setCurrentIndex(join);
+    ui->joinComboBox->setCurrentIndex(join);
 }
 
 void TaskThicknessParameters::onSelectionChanged(const Gui::SelectionChanges& msg)

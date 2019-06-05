@@ -50,21 +50,6 @@ QGIEdge::QGIEdge(int index) :
     setCosmetic(isCosmetic);
 }
 
-QRectF QGIEdge::boundingRect() const
-{
-    return shape().controlPointRect();
-}
-
-QPainterPath QGIEdge::shape() const
-{
-    QPainterPath outline;
-    QPainterPathStroker stroker;
-    stroker.setWidth(2.0);
-    outline = stroker.createStroke(path());
-    return outline;
-}
-
-
 void QGIEdge::setCosmetic(bool state)
 {
     isCosmetic = state;
@@ -72,7 +57,6 @@ void QGIEdge::setCosmetic(bool state)
         setWidth(0.0);
     }
 }
-
 
 void QGIEdge::setHiddenEdge(bool b) {
     isHiddenEdge = b;
@@ -109,9 +93,34 @@ Qt::PenStyle QGIEdge::getHiddenStyle()
     return hidStyle;
 }
 
+ double QGIEdge::getEdgeFuzz(void) const
+{
+    Base::Reference<ParameterGrp> hGrp = App::GetApplication().GetUserParameter().GetGroup("BaseApp")->
+                                         GetGroup("Preferences")->GetGroup("Mod/TechDraw/General");
+    double result = hGrp->GetFloat("EdgeFuzz",10.0);
+    return result;
+}
+
+
+QRectF QGIEdge::boundingRect() const
+{
+    return shape().controlPointRect();
+}
+
+QPainterPath QGIEdge::shape() const
+{
+    QPainterPath outline;
+    QPainterPathStroker stroker;
+    stroker.setWidth(getEdgeFuzz());
+    outline = stroker.createStroke(path());
+    return outline;
+}
+
 void QGIEdge::paint ( QPainter * painter, const QStyleOptionGraphicsItem * option, QWidget * widget) {
     QStyleOptionGraphicsItem myOption(*option);
     myOption.state &= ~QStyle::State_Selected;
+
+    //~ painter->drawRect(boundingRect());          //good for debugging
 
     QGIPrimPath::paint (painter, &myOption, widget);
 }

@@ -119,7 +119,7 @@ int TopoShapeSolidPy::PyInit(PyObject* args, PyObject* /*kwd*/)
         }
 
     }
-    catch (Standard_Failure err) {
+    catch (Standard_Failure& err) {
         std::stringstream errmsg;
         errmsg << "Creation of solid failed: " << err.GetMessageString();
         PyErr_SetString(PartExceptionOCCError, errmsg.str().c_str());
@@ -281,7 +281,7 @@ PyObject* TopoShapeSolidPy::offsetFaces(PyObject *args)
     }
 
     bool paramOK = false;
-    if (!paramOK && PyArg_ParseTuple(args, "Od", &obj,&offset)) {
+    if (PyArg_ParseTuple(args, "Od", &obj,&offset)) {
         paramOK = true;
         Py::Sequence list(obj);
         for (Py::Sequence::iterator it = list.begin(); it != list.end(); ++it) {

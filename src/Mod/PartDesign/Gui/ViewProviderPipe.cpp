@@ -79,6 +79,7 @@ void ViewProviderPipe::setupContextMenu(QMenu* menu, QObject* receiver, const ch
     QAction* act;
     act = menu->addAction(QObject::tr("Edit pipe"), receiver, member);
     act->setData(QVariant((int)ViewProvider::Default));
+    PartDesignGui::ViewProvider::setupContextMenu(menu, receiver, member);
 }
 
 bool ViewProviderPipe::doubleClicked(void)
@@ -88,9 +89,9 @@ bool ViewProviderPipe::doubleClicked(void)
 }
 
 bool ViewProviderPipe::setEdit(int ModNum) {
-    if (ModNum == ViewProvider::Default ) 
+    if (ModNum == ViewProvider::Default )
         setPreviewDisplayMode(true);
-    
+
     return PartDesignGui::ViewProvider::setEdit(ModNum);
 }
 
@@ -128,9 +129,9 @@ void ViewProviderPipe::highlightReferences(const bool on, bool auxiliary)
     Part::Feature* base;
     if(!auxiliary)
         base = static_cast<Part::Feature*>(pcPipe->Spine.getValue());
-    else 
+    else
         base = static_cast<Part::Feature*>(pcPipe->AuxillerySpine.getValue());
-    
+
     if (base == NULL) return;
     PartGui::ViewProviderPart* svp = dynamic_cast<PartGui::ViewProviderPart*>(
                 Gui::Application::Instance->getViewProvider(base));
@@ -139,10 +140,10 @@ void ViewProviderPipe::highlightReferences(const bool on, bool auxiliary)
     std::vector<std::string> edges;
     if(!auxiliary)
         edges = pcPipe->Spine.getSubValuesStartsWith("Edge");
-    else 
+    else
         edges = pcPipe->AuxillerySpine.getSubValuesStartsWith("Edge");
 
-    if (on) {        
+    if (on) {
          if (!edges.empty() && originalLineColors.empty()) {
             TopTools_IndexedMapOfShape eMap;
             TopExp::MapShapes(base->Shape.getValue(), TopAbs_EDGE, eMap);
@@ -173,8 +174,8 @@ QIcon ViewProviderPipe::getIcon(void) const {
         str += QString::fromLatin1("Additive_");
     else
         str += QString::fromLatin1("Subtractive_");
- 
+
     str += QString::fromLatin1("Pipe.svg");
-    return Gui::BitmapFactory().pixmap(str.toStdString().c_str());
+    return mergeTip(Gui::BitmapFactory().pixmap(str.toStdString().c_str()));
 }
 

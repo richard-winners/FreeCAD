@@ -62,6 +62,8 @@ public:
     /// This method is used to restore properties from an XML document.
     virtual void Restore(Base::XMLReader &reader);
 
+    /// Returns true if the transaction list is empty; otherwise returns false.
+    bool isEmpty() const;
     /// get the position in the transaction history
     int getPos(void) const;
     /// check if this object is used in a transaction
@@ -159,7 +161,7 @@ public:
      */
     virtual void* Produce () const
     {
-        return (void*)(new CLASS);
+        return (new CLASS);
     }
 };
 

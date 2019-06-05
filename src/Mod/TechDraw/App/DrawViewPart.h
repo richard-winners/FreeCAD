@@ -67,6 +67,7 @@ class DrawViewDimension;
 class DrawProjectSplit;
 class DrawViewSection;
 class DrawViewDetail;
+class DrawViewBalloon;
 }
 
 namespace TechDraw
@@ -103,6 +104,7 @@ public:
     std::vector<TechDraw::DrawHatch*> getHatches(void) const;
     std::vector<TechDraw::DrawGeomHatch*> getGeomHatches(void) const;
     std::vector<TechDraw::DrawViewDimension*> getDimensions() const;
+    std::vector<TechDraw::DrawViewBalloon*> getBalloons() const;
 
     //TODO: are there use-cases for Python access to TechDrawGeometry???
 
@@ -134,6 +136,7 @@ public:
                                const bool flip=true) const;
 
     virtual short mustExecute() const;
+/*    virtual void onDocumentRestored() override;*/
 
     bool handleFaces(void);
     bool showSectionEdges(void);
@@ -157,6 +160,7 @@ public:
     virtual TopoDS_Shape getSourceShape(void) const; 
     virtual std::vector<TopoDS_Shape> getShapesFromObject(App::DocumentObject* docObj) const; 
     virtual TopoDS_Shape getSourceShapeFused(void) const; 
+    bool isIso(void) const;
 
 protected:
     TechDrawGeometry::GeometryObject *geometryObject;
@@ -175,12 +179,13 @@ protected:
     Base::Vector3d wDir;                       //paperspace Z
     Base::Vector3d shapeCentroid;
     void getRunControl(void);
-
+    
     bool m_sectionEdges;
     bool m_handleFaces;
 
 private:
     bool nowUnsetting;
+/*    bool m_restoreComplete;*/
 
 };
 

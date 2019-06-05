@@ -81,6 +81,9 @@ Trajectory::~Trajectory()
 
 Trajectory &Trajectory::operator=(const Trajectory& Trac)
 {
+    if (this == &Trac)
+        return *this;
+
     for(std::vector<Waypoint*>::iterator it = vpcWaypoints.begin();it!=vpcWaypoints.end();++it)
         delete ( *it );
     vpcWaypoints.clear();
@@ -228,7 +231,7 @@ void Trajectory::generateTrajectory(void)
         }
     }
     catch (KDL::Error &e) {
-        throw Base::Exception(e.Description());
+        throw Base::RuntimeError(e.Description());
     }
 }
 

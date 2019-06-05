@@ -25,6 +25,7 @@ set(TechDrawLIBS
     Part
     Spreadsheet
     Drawing
+    Import
 )
 
 generate_from_xml(DrawPagePy)
@@ -42,6 +43,7 @@ generate_from_xml(DrawGeomHatchPy)
 generate_from_xml(DrawViewCollectionPy)
 generate_from_xml(DrawProjGroupPy)
 generate_from_xml(DrawProjGroupItemPy)
+generate_from_xml(DrawViewAnnotationPy)
 
 SET(Draw_SRCS
     DrawPage.cpp
@@ -72,6 +74,8 @@ SET(Draw_SRCS
     DrawViewCollection.h
     DrawViewDimension.cpp
     DrawViewDimension.h
+    DrawViewBalloon.cpp
+    DrawViewBalloon.h
     DrawViewSection.cpp
     DrawViewSection.h
     DrawHatch.cpp
@@ -94,8 +98,6 @@ SET(TechDraw_SRCS
     AppTechDrawPy.cpp
     DrawUtil.cpp
     DrawUtil.h
-    Cube.cpp
-    Cube.h
     HatchLine.cpp
     HatchLine.h
     PreCompiled.cpp
@@ -143,77 +145,37 @@ SET(Python_SRCS
     DrawProjGroupPy.xml
     DrawProjGroupPyImp.cpp
     DrawProjGroupItemPy.xml
-    DrawProjGroupItemPyImp.cpp)
+    DrawProjGroupItemPyImp.cpp
+    DrawViewAnnotationPy.xml
+    DrawViewAnnotationPyImp.cpp)
 
 SOURCE_GROUP("Mod" FILES ${TechDraw_SRCS})
 SOURCE_GROUP("Features" FILES ${Draw_SRCS})
 SOURCE_GROUP("Geometry" FILES ${Geometry_SRCS})
 SOURCE_GROUP("Python" FILES ${Python_SRCS})
 
-SET(TechDraw_Templates
-    Templates/A0_Landscape_ISO7200TD.svg
-    Templates/A1_Landscape_ISO7200TD.svg
-    Templates/A2_Landscape_ISO7200TD.svg
-    Templates/A3_Landscape_ISO7200TD.svg
-    Templates/A4_LandscapeTD.svg
-    Templates/A4_Landscape_ISO7200TD.svg
-    Templates/A4_Portrait_ISO7200TD.svg
-    Templates/A0_Landscape_blank.svg
-    Templates/A1_Landscape_blank.svg
-    Templates/A2_Landscape_blank.svg
-    Templates/A3_Landscape_blank.svg
-    Templates/A4_Landscape_blank.svg
-    Templates/A4_Portrait_blank.svg
-)
-
-SET(TechDraw_PATFile
-    PAT/FCPAT.pat
-)
-
-SET(TechDraw_LineGroupFile
-    LineGroup/LineGroup.csv
-)
-
-if(MSVC)
+if(BUILD_USE_PCH)
     #add_definitions(-D_PreComp_)
     #GET_MSVC_PRECOMPILED_SOURCE("PreCompiled.cpp" TechDrawCPP_SRCS ${TechDraw_SRCS} ${Draw_SRCS} )
     #ADD_MSVC_PRECOMPILED_HEADER(TechDraw PreCompiled.h PreCompiled.cpp TechDrawCPP_SRCS)
-endif(MSVC)
+endif(BUILD_USE_PCH)
 
 add_library(TechDraw SHARED ${TechDraw_SRCS} ${Draw_SRCS} ${TechDrawAlgos_SRCS}
                            ${Geometry_SRCS} ${Python_SRCS})
 target_link_libraries(TechDraw ${TechDrawLIBS};${QT_QTXML_LIBRARY};${TechDraw})
-
-SET(TechDrawScripts
-    Init.py
-    TestTechDrawApp.py
-)
-
-fc_target_copy_resource(TechDraw
-    ${CMAKE_SOURCE_DIR}/src/Mod/TechDraw
-    ${CMAKE_BINARY_DIR}/Mod/TechDraw
-    ${TechDrawScripts})
-
-fc_target_copy_resource(TechDraw
-    ${CMAKE_SOURCE_DIR}/src/Mod/TechDraw
-    ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/Mod/TechDraw
-    ${TechDraw_Templates})
-
-fc_target_copy_resource(TechDraw
-    ${CMAKE_SOURCE_DIR}/src/Mod/TechDraw
-    ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/Mod/TechDraw
-    ${TechDraw_PATFile})
-
-fc_target_copy_resource(TechDraw
-    ${CMAKE_SOURCE_DIR}/src/Mod/TechDraw
-    ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/Mod/TechDraw
-    ${TechDraw_LineGroupFile})
 
 ADD_CUSTOM_COMMAND(TARGET TechDraw
                    POST_BUILD
                    COMMAND ${CMAKE_COMMAND} -E copy_directory
                    ${CMAKE_SOURCE_DIR}/src/Mod/TechDraw/Patterns
                    ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/Mod/TechDraw/Patterns
+)   
+
+ADD_CUSTOM_COMMAND(TARGET TechDraw
+                   POST_BUILD
+                   COMMAND ${CMAKE_COMMAND} -E copy_directory
+                   ${CMAKE_SOURCE_DIR}/src/Mod/TechDraw/Templates
+                   ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/Mod/TechDraw/Templates
 )   
 
 SET_BIN_DIR(TechDraw TechDraw /Mod/TechDraw)

@@ -354,13 +354,15 @@ void InterpreterSingleton::runInteractiveString(const char *sCmd)
         PyErr_Fetch(&errobj, &errdata, &errtraceback);
 
         RuntimeError exc(""); // do not use PyException since this clears the error indicator
+        if (errdata) {
 #if PY_MAJOR_VERSION >= 3
-        if (PyUnicode_Check(errdata))
-            exc.setMessage(PyUnicode_AsUTF8(errdata));
+            if (PyUnicode_Check(errdata))
+                exc.setMessage(PyUnicode_AsUTF8(errdata));
 #else
-        if (PyString_Check(errdata))
-            exc.setMessage(PyString_AsString(errdata));
+            if (PyString_Check(errdata))
+                exc.setMessage(PyString_AsString(errdata));
 #endif
+        }
         PyErr_Restore(errobj, errdata, errtraceback);
         if (PyErr_Occurred())
             PyErr_Print();
@@ -485,6 +487,12 @@ const char* InterpreterSingleton::init(int argc,char *argv[])
 #else
         Py_SetProgramName(argv[0]);
 #endif
+        // There is a serious bug in VS from 2010 until 2013 where the file descriptor for stdin, stdout or stderr
+        // returns a valid value for GUI applications (i.e. subsystem = Windows) where it shouldn't.
+        // This causes Python to fail during initialization.
+        // A workaround is to use freopen on stdin, stdout and stderr. See the class Redirection inside main()
+        // https://bugs.python.org/issue17797#msg197474
+        //
         Py_Initialize();
         PyEval_InitThreads();
 #if PY_MAJOR_VERSION >= 3
@@ -505,6 +513,7 @@ const char* InterpreterSingleton::init(int argc,char *argv[])
         this->_global = PyEval_SaveThread();
     }
 #if PY_MAJOR_VERSION >= 3
+    PyGILStateLocker lock;
 #if PY_MINOR_VERSION >= 5
     return Py_EncodeLocale(Py_GetPath(),NULL);
 #else

@@ -40,7 +40,7 @@
 /// If you want to mark text for translation, use the QT_TRANSLATE_NOOP macro
 /// with the context "Exceptions" and the right throwing macro from below (the one ending in T)
 /// example:
-/// THROWMT(Base::ValueError,QT_TRANSLATE_NOOP("Exceptions","The multiplicity cannot be increased beyond the degree of the b-spline."));
+/// THROWMT(Base::ValueError,QT_TRANSLATE_NOOP("Exceptions","The multiplicity cannot be increased beyond the degree of the B-Spline."));
 ///
 /// N.B.: The QT_TRANSLATE_NOOP macro won't translate your string. It will just allow lupdate to identify that string for translation so that
 /// if you ask for a translation (and the translator have provided one) at that time it gets translated (e.g. in the UI before showing the message
@@ -117,12 +117,11 @@ public:
   virtual void setPyObject( PyObject * pydict);
 
 protected:
-public: // FIXME: Remove the public keyword
  /* sMessage may be:
-  * - an UI compliant string subsceptible of being translated and shown to the user in the UI
-  * - a very technical message not intended to be traslated or shown to the user in the UI
-  * The preferred way of throwing an exception is using the macros above. This way, the file, 
-  * line and function are automatically inserted. */
+  * - a UI compliant string susceptible to being translated and shown to the user in the UI
+  * - a very technical message not intended to be translated or shown to the user in the UI
+  * The preferred way of throwing an exception is using the macros above.
+  * This way, the file, line, and function are automatically inserted. */
   Exception(const char * sMessage);
   Exception(const std::string& sMessage);
   Exception(void);
@@ -180,7 +179,7 @@ public:
  * The XMLParseException is thrown if parsing an XML failed.
  * @author Werner Mayer
  */
-class BaseExport XMLParseException : public Exception
+class BaseExport XMLParseException : public XMLBaseException
 {
 public:
   /// Construction
@@ -194,6 +193,28 @@ public:
 
   /// Destruction
   virtual ~XMLParseException() throw() {}
+  /// Description of the exception
+  virtual const char* what() const throw();
+};
+
+/**
+ * The XMLAttributeError is thrown if a requested attribute doesn't exist.
+ * @author Werner Mayer
+ */
+class BaseExport XMLAttributeError : public XMLBaseException
+{
+public:
+  /// Construction
+  XMLAttributeError(const char * sMessage);
+  /// Construction
+  XMLAttributeError(const std::string& sMessage);
+  /// Construction
+  XMLAttributeError();
+  /// Construction
+  XMLAttributeError(const XMLAttributeError &inst);
+
+  /// Destruction
+  virtual ~XMLAttributeError() throw() {}
   /// Description of the exception
   virtual const char* what() const throw();
 };
@@ -229,7 +250,8 @@ public:
   virtual void setPyObject( PyObject * pydict);
 protected:
   FileInfo file;
-  // necessary   for what() legacy behaviour as it returns a buffer that can not be of a temporary object to be destroyed at end of what()
+  // necessary   for what() legacy behaviour as it returns a buffer that
+  // can not be of a temporary object to be destroyed at end of what()
   std::string _sErrMsgAndFileName; 
 };
 
@@ -447,6 +469,23 @@ public:
 };
 
 /**
+ * The BadGraphError can be used to indicate that a graph is e.g. not a DAG.
+ * @author Werner Mayer
+ */
+class BaseExport BadGraphError : public RuntimeError
+{
+public:
+  /// Construction
+  BadGraphError();
+  BadGraphError(const char * sMessage);
+  BadGraphError(const std::string& sMessage);
+  /// Construction
+  BadGraphError(const BadGraphError &inst);
+  /// Destruction
+  virtual ~BadGraphError() throw() {}
+};
+
+/**
  * The NotImplementedError can be used to indicate that an invoked function is not implemented.
  * @author Werner Mayer
  */
@@ -617,6 +656,27 @@ public:
     /// Destruction
     virtual ~CADKernelError() throw() {}
 };
+
+/* The RestoreError can be used to try to do a best recovery effort when an error during restoring
+ * occurs. The best recovery effort may be to ignore the element altogether or to insert a placeholder
+ * depending on where the actual element being restored is used.
+ * 
+ * For example, if it is part of an array (e.g. PropertyList) and the order in the array is relevant, it 
+ * is better to have a placeholder than to fail to restore the whole array.
+ */ 
+class BaseExport RestoreError : public Exception
+{
+public:
+    /// Construction
+    RestoreError();
+    RestoreError(const char * sMessage);
+    RestoreError(const std::string& sMessage);
+    /// Construction
+    RestoreError(const RestoreError &inst);
+    /// Destruction
+    virtual ~RestoreError() throw() {}
+};
+
 
 
 inline void Exception::setMessage(const char * sMessage)

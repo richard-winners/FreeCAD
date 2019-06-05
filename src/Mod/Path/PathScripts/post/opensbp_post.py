@@ -80,7 +80,7 @@ POST_OPERATION = ''''''
 TOOL_CHANGE = ''''''
 
 # to distinguish python built-in open function from the one declared below
-if open.__module__ == '__builtin__':
+if open.__module__ in ['__builtin__','io']:
     pythonopen = open
 
 CurrentState = {}
@@ -173,7 +173,7 @@ def export(objectslist, filename, argstring):
     print("done postprocessing.")
 
     # Write the output
-    gfile = pythonopen(filename, "wb")
+    gfile = pythonopen(filename, "w")
     gfile.write(final)
     gfile.close()
 

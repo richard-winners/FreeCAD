@@ -1,6 +1,6 @@
 # ***************************************************************************
 # *                                                                         *
-# *   Copyright (c) 2016 - Bernd Hahnebach <bernd@bimstatik.org>            *
+# *   Copyright (c) 2016 Bernd Hahnebach <bernd@bimstatik.org>              *
 # *                                                                         *
 # *   This program is free software; you can redistribute it and/or modify  *
 # *   it under the terms of the GNU Lesser General Public License (LGPL)    *
@@ -20,12 +20,13 @@
 # *                                                                         *
 # ***************************************************************************
 
-__title__ = "_FemMeshGmsh"
+__title__ = "FreeCAD FEM mesh gmsh document object"
 __author__ = "Bernd Hahnebach"
 __url__ = "http://www.freecadweb.org"
 
 ## @package FemMeshGmsh
 #  \ingroup FEM
+#  \brief FreeCAD FEM _FemMeshGmsh
 
 
 class _FemMeshGmsh():
@@ -50,9 +51,9 @@ class _FemMeshGmsh():
         obj.MeshRegionList = []
 
         obj.addProperty("App::PropertyLinkList", "MeshGroupList", "Base", "Mesh groups of the mesh")
-        obj.MeshRegionList = []
+        obj.MeshGroupList = []
 
-        obj.addProperty("App::PropertyLink", "Part", "FEM Mesh", "Part object to mesh")
+        obj.addProperty("App::PropertyLink", "Part", "FEM Mesh", "Geometry object, the mesh is made from. The geometry object has to have a Shape.")
         obj.Part = None
 
         obj.addProperty("App::PropertyLength", "CharacteristicLengthMax", "FEM Gmsh Mesh Params", "Max mesh element size (0.0 = infinity)")

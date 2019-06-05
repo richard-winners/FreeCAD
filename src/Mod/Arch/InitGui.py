@@ -33,8 +33,8 @@ class ArchWorkbench(Workbench):
         from DraftTools import translate
 
         # arch tools
-        self.archtools = ["Arch_Wall","Arch_Structure","Arch_Rebar",
-                     "Arch_Floor","Arch_Building","Arch_Site",
+        self.archtools = ["Arch_Wall","Arch_Structure","Arch_Rebar","Arch_BuildingPart",
+                     "Arch_Floor","Arch_Building","Arch_Site","Arch_Reference",
                      "Arch_Window","Arch_Roof","Arch_AxisTools",
                      "Arch_SectionPlane","Arch_Space","Arch_Stairs",
                      "Arch_PanelTools","Arch_Equipment",
@@ -99,9 +99,11 @@ class ArchWorkbench(Workbench):
         self.appendMenu([QT_TRANSLATE_NOOP("arch","&Draft"),QT_TRANSLATE_NOOP("arch","Snapping")],self.snapList)
         FreeCADGui.addIconPath(":/icons")
         FreeCADGui.addLanguagePath(":/translations")
-        FreeCADGui.addPreferencePage(":/ui/preferences-arch.ui","Arch")
-        FreeCADGui.addPreferencePage(":/ui/preferences-archdefaults.ui","Arch")
         if hasattr(FreeCADGui,"draftToolBar"):
+            if not hasattr(FreeCADGui.draftToolBar,"loadedArchPreferences"):
+                FreeCADGui.addPreferencePage(":/ui/preferences-arch.ui","Arch")
+                FreeCADGui.addPreferencePage(":/ui/preferences-archdefaults.ui","Arch")
+                FreeCADGui.draftToolBar.loadedArchPreferences = True
             if not hasattr(FreeCADGui.draftToolBar,"loadedPreferences"):
                 FreeCADGui.addPreferencePage(":/ui/preferences-draft.ui","Draft")
                 FreeCADGui.addPreferencePage(":/ui/preferences-draftsnap.ui","Draft")
@@ -136,5 +138,7 @@ FreeCADGui.addWorkbench(ArchWorkbench)
 import Arch_rc
 FreeCADGui.addPreferencePage(":/ui/preferences-ifc.ui","Import-Export")
 FreeCADGui.addPreferencePage(":/ui/preferences-dae.ui","Import-Export")
+
+FreeCAD.__unit_test__ += [ "TestArch" ]
 
 

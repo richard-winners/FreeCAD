@@ -9,6 +9,7 @@ SET(Material_SRCS
     importFCMat.py
     MaterialEditor.py
     materials-editor.ui
+    MatPropDict.xml
 )
 SOURCE_GROUP("Module" FILES ${Material_SRCS})
 
@@ -17,11 +18,19 @@ SOURCE_GROUP("Module" FILES ${Material_SRCS})
 
 SET (MaterialLib_Files
     StandardMaterial/None.FCMat
-    StandardMaterial/ABS.FCMat
+    StandardMaterial/ABS-Generic.FCMat
+    StandardMaterial/Acrylic-Glass-Generic.FCMat
     StandardMaterial/CalculiX-Steel.FCMat
     StandardMaterial/Concrete-Generic.FCMat
-    StandardMaterial/PLA.FCMat
+    StandardMaterial/Glass-Generic.FCMat
+    StandardMaterial/PA6-Generic.FCMat
+    StandardMaterial/PET-Generic.FCMat
+    StandardMaterial/PLA-Generic.FCMat
+    StandardMaterial/PP-Generic.FCMat
+    StandardMaterial/PTFE-Generic.FCMat
+    StandardMaterial/PVC-Generic.FCMat
     StandardMaterial/Steel-Generic.FCMat
+    StandardMaterial/TEMPLATE.FCMat
     StandardMaterial/Wood-Generic.FCMat
     StandardMaterial/Readme.txt
 )
@@ -40,7 +49,7 @@ ADD_CUSTOM_TARGET(Material ALL
 )
 
 fc_target_copy_resource(Material 
-    ${CMAKE_SOURCE_DIR}/src/Mod/Material
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_BINARY_DIR}/Mod/Material
     ${Material_SRCS})
 
@@ -61,11 +70,11 @@ ADD_CUSTOM_TARGET(FluidMaterialLib ALL
 # When a target copies files to different output directories then apparently it always builds the project
 # which is very annoying. So, the trick is to split this into two targets to avoid this behaviour.
 fc_target_copy_resource(MaterialLib 
-    ${CMAKE_SOURCE_DIR}/src/Mod/Material
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/Mod/Material
     ${MaterialLib_Files})
 fc_target_copy_resource(FluidMaterialLib 
-    ${CMAKE_SOURCE_DIR}/src/Mod/Material
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/Mod/Material
     ${FluidMaterial_Files})
 

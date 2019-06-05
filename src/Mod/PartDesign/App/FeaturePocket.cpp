@@ -43,6 +43,8 @@
 # include <BRepAlgoAPI_Common.hxx>
 #endif
 
+#include <QCoreApplication>
+#include <Base/Console.h>
 #include <Base/Exception.h>
 #include <Base/Placement.h>
 #include <App/Document.h>
@@ -51,6 +53,8 @@
 
 
 using namespace PartDesign;
+
+/* TRANSLATOR PartDesign::Pocket */
 
 const char* Pocket::TypeEnums[]= {"Length","ThroughAll","UpToFirst","UpToFace","TwoLengths",NULL};
 
@@ -112,8 +116,13 @@ App::DocumentObjectExecReturn *Pocket::execute(void)
     TopoDS_Shape base;
     try {
         base = getBaseShape();
-    } catch (const Base::Exception&) {
-        return new App::DocumentObjectExecReturn("No sketch support and no base shape: Please tell me where to remove the material of the pocket!");
+    }
+    catch (const Base::Exception&) {
+        std::string text(QT_TR_NOOP("The requested feature cannot be created. The reason may be that:\n\n"
+                                    "  \xe2\x80\xa2 the active Body does not contain a base shape, so there is no\n"
+                                    "  material to be removed;\n"
+                                    "  \xe2\x80\xa2 the selected sketch does not belong to the active Body."));
+        return new App::DocumentObjectExecReturn(text);
     }
 
     // get the Sketch plane
@@ -181,6 +190,12 @@ App::DocumentObjectExecReturn *Pocket::execute(void)
             // FIXME: In some cases this affects the Shape property: It is set to the same shape as the SubShape!!!!
             TopoDS_Shape result = refineShapeIfActive(mkCut.Shape());
             this->AddSubShape.setValue(result);
+
+            int prismCount = countSolids(prism);
+            if (prismCount > 1) {
+                return new App::DocumentObjectExecReturn("Pocket: Result has multiple solids. This is not supported at this time.");
+            }
+
             this->Shape.setValue(getSolid(prism));
         } else {
             TopoDS_Shape prism;
@@ -203,6 +218,12 @@ App::DocumentObjectExecReturn *Pocket::execute(void)
             TopoDS_Shape solRes = this->getSolid(result);
             if (solRes.IsNull())
                 return new App::DocumentObjectExecReturn("Pocket: Resulting shape is not a solid");
+
+            int solidCount = countSolids(result);
+            if (solidCount > 1) {
+                return new App::DocumentObjectExecReturn("Pocket: Result has multiple solids. This is not supported at this time.");
+
+            }
             solRes = refineShapeIfActive(solRes);
             remapSupportShape(solRes);
             this->Shape.setValue(getSolid(solRes));

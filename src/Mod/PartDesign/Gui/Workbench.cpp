@@ -224,6 +224,16 @@ void Workbench::setupContextMenu(const char* recipient, Gui::MenuItem* item) con
             if (Gui::Selection().countObjectsOfType(PartDesign::Transformed::getClassTypeId()) -
                 Gui::Selection().countObjectsOfType(PartDesign::MultiTransform::getClassTypeId()) == 1 )
                 *item << "PartDesign_MultiTransform";
+
+            if (Gui::Selection().countObjectsOfType(App::DocumentObject::getClassTypeId()) > 0) {
+                *item << "Std_SetAppearance"
+                      << "Std_RandomColor"
+                      << "Std_Cut"
+                      << "Std_Copy"
+                      << "Std_Paste"
+                      << "Separator"
+                      << "Std_Delete";
+            }
         }
     }
 }
@@ -240,6 +250,7 @@ void Workbench::activated()
         "PartDesign_Point",
         "PartDesign_Line",
         "PartDesign_Plane",
+        "PartDesign_CoordinateSystem",
         0};
     Watcher.push_back(new Gui::TaskView::TaskWatcherCommands(
         "SELECT Part::Feature SUBELEMENT Vertex COUNT 1..",
@@ -254,6 +265,7 @@ void Workbench::activated()
         "PartDesign_Point",
         "PartDesign_Line",
         "PartDesign_Plane",
+        "PartDesign_CoordinateSystem",
         0};
     Watcher.push_back(new Gui::TaskView::TaskWatcherCommands(
         "SELECT Part::Feature SUBELEMENT Edge COUNT 1..",
@@ -271,6 +283,7 @@ void Workbench::activated()
         "PartDesign_Point",
         "PartDesign_Line",
         "PartDesign_Plane",
+        "PartDesign_CoordinateSystem",
         0};
     Watcher.push_back(new Gui::TaskView::TaskWatcherCommands(
         "SELECT Part::Feature SUBELEMENT Face COUNT 1",
@@ -304,6 +317,7 @@ void Workbench::activated()
         "PartDesign_Plane",
         "PartDesign_Line",
         "PartDesign_Point",
+        "PartDesign_CoordinateSystem",
         0};
     Watcher.push_back(new Gui::TaskView::TaskWatcherCommands(
         "SELECT App::Plane COUNT 1",
@@ -316,6 +330,7 @@ void Workbench::activated()
         "PartDesign_Point",
         "PartDesign_Line",
         "PartDesign_Plane",
+        "PartDesign_CoordinateSystem",
         0};
     Watcher.push_back(new Gui::TaskView::TaskWatcherCommands(
         "SELECT PartDesign::Plane COUNT 1",
@@ -340,6 +355,7 @@ void Workbench::activated()
         "PartDesign_Point",
         "PartDesign_Line",
         "PartDesign_Plane",
+        "PartDesign_CoordinateSystem",
         0};
     Watcher.push_back(new Gui::TaskView::TaskWatcherCommands(
         "SELECT PartDesign::Point COUNT 1",
@@ -455,6 +471,7 @@ Gui::MenuItem* Workbench::setupMenuBar() const
           << "PartDesign_Point"
           << "PartDesign_Line"
           << "PartDesign_Plane"
+          << "PartDesign_CoordinateSystem"
           << "PartDesign_ShapeBinder"
           << "PartDesign_Clone"
           << "Separator"
@@ -520,6 +537,7 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
           << "PartDesign_Point"
           << "PartDesign_Line"
           << "PartDesign_Plane"
+          << "PartDesign_CoordinateSystem"
           << "PartDesign_ShapeBinder"
           << "PartDesign_Clone";
 

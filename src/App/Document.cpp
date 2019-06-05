@@ -324,7 +324,7 @@ void Document::exportGraphviz(std::ostream& out) const
         }
 
         /**
-         * @brief setPropertyVertexAttributes Set vertex attributes for a Porperty node in a graph.
+         * @brief setPropertyVertexAttributes Set vertex attributes for a Property node in a graph.
          * @param g Graph
          * @param vertex Property node
          * @param name Name of node
@@ -525,13 +525,22 @@ void Document::exportGraphviz(std::ostream& out) const
             setGraphLabel(sub, cs);
 
             for(auto obj : cs->getOutList()) {
-                if(obj->hasExtension(GeoFeatureGroupExtension::getExtensionClassTypeId()))
-                    recursiveCSSubgraphs(obj, cs);
+                if (obj->hasExtension(GeoFeatureGroupExtension::getExtensionClassTypeId())) {
+                    // in case of dependencies loops check if obj is already part of the
+                    // map to avoid infinite recursions
+                    auto it = GraphList.find(obj);
+                    if (it == GraphList.end())
+                        recursiveCSSubgraphs(obj, cs);
+                }
             }
 
             //setup the origin if available
             if(cs->hasExtension(App::OriginGroupExtension::getExtensionClassTypeId())) {
                 auto origin = cs->getExtensionByType<OriginGroupExtension>()->Origin.getValue();
+                if (!origin) {
+                    std::cerr << "Origin feature not found" << std::endl;
+                    return;
+                }
                 auto& osub = sub.create_subgraph();
                 GraphList[origin] = &osub;
                 get_property(osub, graph_name) = getClusterName(origin);
@@ -548,7 +557,8 @@ void Document::exportGraphviz(std::ostream& out) const
             if(CSSubgraphs) {
                 //first build up the coordinate system subgraphs
                 for (auto objectIt : d->objectArray) {
-                    if (objectIt->hasExtension(GeoFeatureGroupExtension::getExtensionClassTypeId()) && objectIt->getInList().empty())
+                    // do not require an empty inlist (#0003465: Groups breaking dependency graph)
+                    if (objectIt->hasExtension(GeoFeatureGroupExtension::getExtensionClassTypeId()))
                         recursiveCSSubgraphs(objectIt, nullptr);
                 }
             }
@@ -955,6 +965,8 @@ void Document::openTransaction(const char* name)
             d->activeUndoTransaction->Name = name;
         else
             d->activeUndoTransaction->Name = "<empty>";
+
+        signalOpenTransaction(*this, d->activeUndoTransaction->Name);
     }
 }
 
@@ -994,6 +1006,7 @@ void Document::commitTransaction()
             delete mUndoTransactions.front();
             mUndoTransactions.pop_front();
         }
+        signalCommitTransaction(*this);
     }
 }
 
@@ -1008,6 +1021,7 @@ void Document::abortTransaction()
         // destroy the undo
         delete d->activeUndoTransaction;
         d->activeUndoTransaction = 0;
+        signalAbortTransaction(*this);
     }
 }
 
@@ -1017,6 +1031,15 @@ bool Document::hasPendingTransaction() const
         return true;
     else
         return false;
+}
+
+bool Document::isTransactionEmpty() const
+{
+    if (d->activeUndoTransaction) {
+        return d->activeUndoTransaction->isEmpty();
+    }
+
+    return true;
 }
 
 void Document::clearUndos()
@@ -1088,8 +1111,15 @@ unsigned int Document::getMaxUndoStackSize(void)const
     return d->UndoMaxStackSize;
 }
 
+void Document::onBeforeChange(const Property* prop)
+{
+    signalBeforeChange(*this, *prop);
+}
+
 void Document::onChanged(const Property* prop)
 {
+    signalChanged(*this, *prop);
+
     // the Name property is a label for display purposes
     if (prop == &Label) {
         App::GetApplication().signalRelabelDocument(*this);
@@ -1130,6 +1160,9 @@ void Document::onChanged(const Property* prop)
 
 void Document::onBeforeChangeProperty(const TransactionalObject *Who, const Property *What)
 {
+    if(Who->isDerivedFrom(App::DocumentObject::getClassTypeId()))
+        signalBeforeChangeObject(*static_cast<const App::DocumentObject*>(Who), *What);
+
     if (d->activeUndoTransaction && !d->rollback)
         d->activeUndoTransaction->addObjectChange(Who,What);
 }
@@ -1254,7 +1287,11 @@ Document::~Document()
     Console().Log("-App::Document: %s %p\n",getName(), this);
 #endif
 
-    clearUndos();
+    try {
+        clearUndos();
+    }
+    catch (const boost::exception&) {
+    }
 
     std::map<std::string,DocumentObject*>::iterator it;
 
@@ -1273,6 +1310,7 @@ Document::~Document()
     // not to dec'ref the Python object any more.
     // But we must still invalidate the Python object because it doesn't need to be
     // destructed right now because the interpreter can own several references to it.
+    Base::PyGILStateLocker lock;
     Base::PyObjectBase* doc = (Base::PyObjectBase*)DocumentPythonObject.ptr();
     // Call before decrementing the reference counter, otherwise a heap error can occur
     doc->setInvalid();
@@ -1307,11 +1345,6 @@ std::string Document::getTransientDirectoryName(const std::string& uuid, const s
 
 void Document::Save (Base::Writer &writer) const
 {
-    writer.Stream() << "<?xml version='1.0' encoding='utf-8'?>" << endl
-    << "<!--" << endl
-    << " FreeCAD Document, see http://www.freecadweb.org for more information..." << endl
-    << "-->" << endl;
-
     writer.Stream() << "<Document SchemaVersion=\"4\" ProgramVersion=\""
                     << App::Application::Config()["BuildVersionMajor"] << "."
                     << App::Application::Config()["BuildVersionMinor"] << "R"
@@ -1522,16 +1555,40 @@ Document::readObjects(Base::XMLReader& reader)
     setStatus(Document::KeepTrailingDigits, keepDigits);
 
     // read the features itself
+    reader.clearPartialRestoreDocumentObject();
     reader.readElement("ObjectData");
     Cnt = reader.getAttributeAsInteger("Count");
     for (int i=0 ;i<Cnt ;i++) {
         reader.readElement("Object");
         std::string name = reader.getName(reader.getAttribute("name"));
         DocumentObject* pObj = getObject(name.c_str());
+
         if (pObj) { // check if this feature has been registered
             pObj->setStatus(ObjectStatus::Restore, true);
-            pObj->Restore(reader);
+            try {
+                pObj->Restore(reader);
+            }
+            // Try to continue only for certain exception types if not handled
+            // by the feature type. For all other exception types abort the process.
+            catch (const Base::UnicodeError &e) {
+                e.ReportException();
+            }
+            catch (const Base::ValueError &e) {
+                e.ReportException();
+            }
+            catch (const Base::IndexError &e) {
+                e.ReportException();
+            }
+            catch (const Base::RuntimeError &e) {
+                e.ReportException();
+            }
+
             pObj->setStatus(ObjectStatus::Restore, false);
+
+            if (reader.testStatus(Base::XMLReader::ReaderStatus::PartialRestoreInDocumentObject)) {
+                Base::Console().Error("Object \"%s\" was subject to a partial restore. As a result geometry may have changed or be incomplete.\n",name.c_str());
+                reader.clearPartialRestoreDocumentObject();
+            }
         }
         reader.readEndElement("Object");
     }
@@ -1604,19 +1661,10 @@ bool Document::saveAs(const char* file)
     return save();
 }
 
-bool Document::saveCopy(const char* file)
+bool Document::saveCopy(const char* file) const
 {
-    std::string originalFileName = this->FileName.getStrValue();
-    std::string originalLabel = this->Label.getStrValue();
-    Base::FileInfo fi(file);
     if (this->FileName.getStrValue() != file) {
-        this->FileName.setValue(file);
-        this->Label.setValue(fi.fileNamePure());
-        this->Uid.touch(); // this forces a rename of the transient directory
-        bool result = save();
-        this->FileName.setValue(originalFileName);
-        this->Label.setValue(originalLabel);
-        this->Uid.touch();
+        bool result = saveToFile(file);
         return result;
     }
     return false;
@@ -1625,13 +1673,9 @@ bool Document::saveCopy(const char* file)
 // Save the document under the name it has been opened
 bool Document::save (void)
 {
-    int compression = App::GetApplication().GetParameterGroupByPath
-        ("User parameter:BaseApp/Preferences/Document")->GetInt("CompressionLevel",3);
-    compression = Base::clamp<int>(compression, Z_NO_COMPRESSION, Z_BEST_COMPRESSION);
-
     if (*(FileName.getValue()) != '\0') {
         // Save the name of the tip object in order to handle in Restore()
-        if(Tip.getValue()) {
+        if (Tip.getValue()) {
             TipName.setValue(Tip.getValue()->getNameInDocument());
         }
 
@@ -1645,40 +1689,72 @@ bool Document::save (void)
                 ("User parameter:BaseApp/Preferences/Document")->GetASCII("prefAuthor","");
             LastModifiedBy.setValue(Author.c_str());
         }
-        // make a tmp. file where to save the project data first and then rename to
-        // the actual file name. This may be useful if overwriting an existing file
-        // fails so that the data of the work up to now isn't lost.
-        std::string uuid = Base::Uuid::createUuid();
-        std::string fn = FileName.getValue();
-        fn += "."; fn += uuid;
-        Base::FileInfo tmp(fn);
 
-        // open extra scope to close ZipWriter properly
-        {
-            Base::ofstream file(tmp, std::ios::out | std::ios::binary);
-            Base::ZipWriter writer(file);
+        return saveToFile(FileName.getValue());
+    }
 
-            writer.setComment("FreeCAD Document");
-            writer.setLevel(compression);
-            writer.putNextEntry("Document.xml");
+    return false;
+}
 
-            Document::Save(writer);
+bool Document::saveToFile(const char* filename) const
+{
+    signalStartSave(*this, filename);
 
-            // Special handling for Gui document.
-            signalSaveDocument(writer);
+    auto hGrp = App::GetApplication().GetParameterGroupByPath("User parameter:BaseApp/Preferences/Document");
+    int compression = hGrp->GetInt("CompressionLevel",3);
+    compression = Base::clamp<int>(compression, Z_NO_COMPRESSION, Z_BEST_COMPRESSION);
 
-            // write additional files
-            writer.writeFiles();
+    bool policy = App::GetApplication().GetParameterGroupByPath
+                ("User parameter:BaseApp/Preferences/Document")->GetBool("BackupPolicy",true);
 
-            if (writer.hasErrors()) {
-                throw Base::FileException("Failed to write all data to file", tmp);
-            }
+    // make a tmp. file where to save the project data first and then rename to
+    // the actual file name. This may be useful if overwriting an existing file
+    // fails so that the data of the work up to now isn't lost.
+    std::string uuid = Base::Uuid::createUuid();
+    std::string fn = filename;
+    if (policy) {
+        fn += ".";
+        fn += uuid;
+    }
+    Base::FileInfo tmp(fn);
 
-            GetApplication().signalSaveDocument(*this);
+    // open extra scope to close ZipWriter properly
+    {
+        Base::ofstream file(tmp, std::ios::out | std::ios::binary);
+        Base::ZipWriter writer(file);
+        if (!file.is_open()) {
+            throw Base::FileException("Failed to open file", tmp);
         }
 
+        writer.setComment("FreeCAD Document");
+        writer.setLevel(compression);
+        writer.putNextEntry("Document.xml");
+
+        if (hGrp->GetBool("SaveBinaryBrep", false))
+            writer.setMode("BinaryBrep");
+
+        writer.Stream() << "<?xml version='1.0' encoding='utf-8'?>" << endl
+                        << "<!--" << endl
+                        << " FreeCAD Document, see http://www.freecadweb.org for more information..." << endl
+                        << "-->" << endl;
+        Document::Save(writer);
+
+        // Special handling for Gui document.
+        signalSaveDocument(writer);
+
+        // write additional files
+        writer.writeFiles();
+
+        if (writer.hasErrors()) {
+            throw Base::FileException("Failed to write all data to file", tmp);
+        }
+
+        GetApplication().signalSaveDocument(*this);
+    }
+
+    if (policy) {
         // if saving the project data succeeded rename to the actual file name
-        Base::FileInfo fi(FileName.getValue());
+        Base::FileInfo fi(filename);
         if (fi.exists()) {
             bool backup = App::GetApplication().GetParameterGroupByPath
                 ("User parameter:BaseApp/Preferences/Document")->GetBool("CreateBackupFiles",true);
@@ -1731,14 +1807,15 @@ bool Document::save (void)
                 fi.deleteFile();
             }
         }
-        if (tmp.renameFile(FileName.getValue()) == false)
+        if (tmp.renameFile(filename) == false) {
             Base::Console().Warning("Cannot rename file from '%s' to '%s'\n",
-            fn.c_str(), FileName.getValue());
-
-        return true;
+                                    fn.c_str(), filename);
+        }
     }
 
-    return false;
+    signalFinishSave(*this, filename);
+
+    return true;
 }
 
 // Open the document
@@ -1755,6 +1832,7 @@ void Document::restore (void)
         signalTransactionRemove(*(*obj), 0);
     }
     for (std::vector<DocumentObject*>::iterator obj = d->objectArray.begin(); obj != d->objectArray.end(); ++obj) {
+        (*obj)->setStatus(ObjectStatus::Destroy, true);
         delete *obj;
     }
     d->objectArray.clear();
@@ -1807,6 +1885,11 @@ void Document::restore (void)
 
     GetApplication().signalFinishRestoreDocument(*this);
     setStatus(Document::Restoring, false);
+
+    if (reader.testStatus(Base::XMLReader::ReaderStatus::PartialRestore)) {
+        setStatus(Document::PartialRestore, true);
+        Base::Console().Error("There were errors while loading the file. Some data might have been modified or not recovered at all. Look above for more specific information about the objects involved.\n");
+    }
 }
 
 bool Document::isSaved() const
@@ -1957,7 +2040,7 @@ Document::getDependencyList(const std::vector<App::DocumentObject*>& objs) const
         std::stringstream ss;
         ss << "Gathering all dependencies failed, probably due to circular dependencies. Error: ";
         ss << e.what();
-        throw Base::RuntimeError(ss.str().c_str());
+        throw Base::BadGraphError(ss.str().c_str());
     }
 
     std::set<Vertex> out;
@@ -2075,7 +2158,7 @@ int Document::recompute()
     if (skip)
         return 0;
 
-    ObjectStatusLocker<Document::Status, Document> exe(Document::Recomputing, this);
+    Base::ObjectStatusLocker<Document::Status, Document> exe(Document::Recomputing, this);
 
     // delete recompute log
     for (std::vector<App::DocumentObjectExecReturn*>::iterator it=_RecomputeLog.begin();it!=_RecomputeLog.end();++it)
@@ -2087,7 +2170,6 @@ int Document::recompute()
 
     std::list<Vertex> make_order;
     DependencyList::out_edge_iterator j, jend;
-
 
     try {
         // this sort gives the execute
@@ -2171,6 +2253,7 @@ int Document::recompute()
                 d->vertexMap.clear();
                 return -1;
             }
+            signalRecomputedObject(*Cur);
             ++objectCount;
         }
     }
@@ -2225,27 +2308,33 @@ int Document::recompute()
 
     for (auto objIt = topoSortedObjects.rbegin(); objIt != topoSortedObjects.rend(); ++objIt){
         // ask the object if it should be recomputed
-        if ((*objIt)->isTouched() || (*objIt)->mustExecute() == 1){
+        bool doRecompute = false;
+        if ((*objIt)->mustRecompute()) {
+            doRecompute = true;
             objectCount++;
             if (_recomputeFeature(*objIt)) {
                 // if something happened break execution of recompute
                 return -1;
             }
-            else{
-                (*objIt)->purgeTouched();
-                // set all dependent object touched to force recompute
-                for (auto inObjIt : (*objIt)->getInList())
-                    inObjIt->touch();
-            }
+
+            signalRecomputedObject(*(*objIt));
+        }
+
+        if ((*objIt)->isTouched() || doRecompute) {
+            (*objIt)->purgeTouched();
+            // force recompute of all dependent objects
+            for (auto inObjIt : (*objIt)->getInList())
+                inObjIt->enforceRecompute();
         }
     }
-#ifdef FC_DEBUG
-    // check if all objects are recalculated which were thouched
+
+    // check if all objects are recalculated which were touched
     for (auto objectIt : d->objectArray) {
-        if (objectIt->isTouched())
-            cerr << "Document::recompute(): " << objectIt->getNameInDocument() << " still touched after recompute" << endl;
+        if (objectIt->isTouched()) {
+            Base::Console().Warning("Document::recompute(): %s still touched after recompute\n",
+                                    objectIt->getNameInDocument());
+        }
     }
-#endif
 
     signalRecomputed(*this);
 
@@ -2398,7 +2487,8 @@ std::vector<App::DocumentObject*> DocumentP::topologicalSort(const std::vector<A
 
         for (auto outListIt : out) {
             auto outListMapIt = countMap.find(outListIt);
-            outListMapIt->second = outListMapIt->second - 1;
+            if (outListMapIt != countMap.end())
+                outListMapIt->second = outListMapIt->second - 1;
         }
         ret.push_back(rootObjeIt->first);
 
@@ -2437,7 +2527,7 @@ bool Document::_recomputeFeature(DocumentObject* Feat)
             returnCode->Which = Feat;
             _RecomputeLog.push_back(returnCode);
     #ifdef FC_DEBUG
-            Base::Console().Error("%s\n",returnCode->Why.c_str());
+            Base::Console().Error("Error in feature: %s\n%s\n",Feat->getNameInDocument(),returnCode->Why.c_str());
     #endif
             Feat->setError();
             return true;
@@ -2486,7 +2576,7 @@ bool Document::_recomputeFeature(DocumentObject* Feat)
         returnCode->Which = Feat;
         _RecomputeLog.push_back(returnCode);
 #ifdef FC_DEBUG
-        Base::Console().Error("%s\n",returnCode->Why.c_str());
+        Base::Console().Error("Error in feature: %s\n%s\n",Feat->getNameInDocument(),returnCode->Why.c_str());
 #endif
         Feat->setError();
     }
@@ -2501,8 +2591,10 @@ void Document::recomputeFeature(DocumentObject* Feat)
     _RecomputeLog.clear();
 
     // verify that the feature is (active) part of the document
-    if (Feat->getNameInDocument())
+    if (Feat->getNameInDocument()) {
         _recomputeFeature(Feat);
+        signalRecomputedObject(*Feat);
+    }
 }
 
 DocumentObject * Document::addObject(const char* sType, const char* pObjectName, bool isNew)
@@ -2819,7 +2911,6 @@ void Document::_removeObject(DocumentObject* pcObject)
 
     std::map<std::string,DocumentObject*>::iterator pos = d->objectMap.find(pcObject->getNameInDocument());
 
-
     if (d->activeObject == pcObject)
         d->activeObject = 0;
 
@@ -2940,7 +3031,13 @@ void Document::breakDependency(DocumentObject* pcObject, bool clear)
             std::vector<App::ObjectIdentifier> paths;
             pcObject->ExpressionEngine.getPathsToDocumentObject(it->second, paths);
             for (std::vector<App::ObjectIdentifier>::iterator jt = paths.begin(); jt != paths.end(); ++jt) {
-                pcObject->ExpressionEngine.setValue(*jt, nullptr);
+                // When nullifying the expression handle case where an identifier lacks of the property
+                try {
+                    pcObject->ExpressionEngine.setValue(*jt, nullptr);
+                }
+                catch (const Base::Exception& e) {
+                    e.ReportException();
+                }
             }
         }
     }
@@ -2956,6 +3053,11 @@ DocumentObject* Document::copyObject(DocumentObject* obj, bool recursive)
     md.setVerbose(recursive);
     if (recursive) {
         objs = obj->getDocument()->getDependencyList(objs);
+        auto it = std::find(objs.begin(), objs.end(), obj);
+        if (it != objs.end()) {
+            auto index = std::distance(objs.begin(), it);
+            std::swap(objs[index], objs.back());
+        }
     }
 
     unsigned int memsize=1000; // ~ for the meta-information

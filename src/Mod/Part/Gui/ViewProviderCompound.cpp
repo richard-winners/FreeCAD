@@ -28,9 +28,9 @@
 # include <TopTools_IndexedMapOfShape.hxx>
 #endif
 
-#include "ViewProviderCompound.h"
 #include <Gui/Application.h>
 #include <Mod/Part/App/FeatureCompound.h>
+#include "ViewProviderCompound.h"
 
 
 using namespace PartGui;
@@ -39,6 +39,7 @@ PROPERTY_SOURCE(PartGui::ViewProviderCompound,PartGui::ViewProviderPart)
 
 ViewProviderCompound::ViewProviderCompound()
 {
+    sPixmap = "Part_Compound.svg";
 }
 
 ViewProviderCompound::~ViewProviderCompound()
@@ -153,4 +154,12 @@ void ViewProviderCompound::dropObject(App::DocumentObject* obj)
     std::vector<App::DocumentObject*> pShapes = pComp->Links.getValues();
     pShapes.push_back(obj);
     pComp->Links.setValues(pShapes);
+}
+
+void ViewProviderCompound::replaceObject(App::DocumentObject* oldValue, App::DocumentObject* newValue)
+{
+    Part::Compound* pBool = static_cast<Part::Compound*>(getObject());
+    std::vector<App::DocumentObject*> pShapes = pBool->Links.getValues();
+    std::replace(pShapes.begin(), pShapes.end(), oldValue, newValue);
+    pBool->Links.setValues(pShapes);
 }

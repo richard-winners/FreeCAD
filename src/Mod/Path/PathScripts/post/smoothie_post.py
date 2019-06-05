@@ -108,7 +108,7 @@ TOOL_CHANGE = ''''''
 
 
 # to distinguish python built-in open function from the one declared below
-if open.__module__ == '__builtin__':
+if open.__module__ in ['__builtin__','io']:
     pythonopen = open
 
 def processArguments(argstring):
@@ -243,7 +243,7 @@ def export(objectslist, filename, argstring):
     else:
 
         if not filename == '-':
-            gfile = pythonopen(filename, "wb")
+            gfile = pythonopen(filename, "w")
             gfile.write(final)
             gfile.close()
 
@@ -266,7 +266,7 @@ def sendToSmoothie(IP_ADDR, GCODE, fname):
     s =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(4.0)
     s.connect((IP_ADDR, 115))
-    tn= s.makefile()
+    tn= s.makefile(mode='rw')
 
 # read startup prompt
     ln= tn.readline()

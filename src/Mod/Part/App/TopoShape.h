@@ -29,13 +29,48 @@
 #include <TopoDS_Wire.hxx>
 #include <TopTools_ListOfShape.hxx>
 #include <App/ComplexGeoData.h>
+#include <Base/Exception.h>
 
 class gp_Ax1;
 class gp_Ax2;
 class gp_Vec;
 
+namespace App {
+class Color;
+}
+
 namespace Part
 {
+
+/* A special sub-class to indicate null shapes
+ */
+class PartExport NullShapeException : public Base::ValueError
+{
+public:
+   /// Construction
+   NullShapeException();
+   NullShapeException(const char * sMessage);
+   NullShapeException(const std::string& sMessage);
+   /// Construction
+   NullShapeException(const NullShapeException &inst);
+   /// Destruction
+   virtual ~NullShapeException() throw() {}
+};
+
+/* A special sub-class to indicate boolean failures
+ */
+class PartExport BooleanException : public Base::CADKernelError
+{
+public:
+   /// Construction
+   BooleanException();
+   BooleanException(const char * sMessage);
+   BooleanException(const std::string& sMessage);
+   /// Construction
+   BooleanException(const BooleanException &inst);
+   /// Destruction
+   virtual ~BooleanException() throw() {}
+};
 
 class PartExport ShapeSegment : public Data::Segment
 {
@@ -136,7 +171,7 @@ public:
     void importIges(const char *FileName);
     void importStep(const char *FileName);
     void importBrep(const char *FileName);
-    void importBrep(std::istream&);
+    void importBrep(std::istream&, int indicator=1);
     void importBinary(std::istream&);
     void exportIges(const char *FileName) const;
     void exportStep(const char *FileName) const;
@@ -144,7 +179,7 @@ public:
     void exportBrep(std::ostream&) const;
     void exportBinary(std::ostream&);
     void exportStl (const char *FileName, double deflection) const;
-    void exportFaceSet(double, double, std::ostream&) const;
+    void exportFaceSet(double, double, const std::vector<App::Color>&, std::ostream&) const;
     void exportLineSet(std::ostream&) const;
     //@}
 
@@ -165,8 +200,8 @@ public:
     TopoDS_Shape fuse(TopoDS_Shape) const;
     TopoDS_Shape fuse(const std::vector<TopoDS_Shape>&, Standard_Real tolerance = 0.0) const;
     TopoDS_Shape oldFuse(TopoDS_Shape) const;
-    TopoDS_Shape section(TopoDS_Shape) const;
-    TopoDS_Shape section(const std::vector<TopoDS_Shape>&, Standard_Real tolerance = 0.0) const;
+    TopoDS_Shape section(TopoDS_Shape, Standard_Boolean approximate=Standard_False) const;
+    TopoDS_Shape section(const std::vector<TopoDS_Shape>&, Standard_Real tolerance = 0.0, Standard_Boolean approximate=Standard_False) const;
     std::list<TopoDS_Wire> slice(const Base::Vector3d&, double) const;
     TopoDS_Compound slices(const Base::Vector3d&, const std::vector<double>&) const;
     /**
@@ -237,6 +272,8 @@ public:
     bool fix(double, double, double);
     bool removeInternalWires(double);
     TopoDS_Shape removeSplitter() const;
+    TopoDS_Shape defeaturing(const std::vector<TopoDS_Shape>& s) const;
+    TopoDS_Shape makeShell(const TopoDS_Shape&) const;
     //@}
 
     /** @name Getting basic geometric entities */

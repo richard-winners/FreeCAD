@@ -24,9 +24,8 @@
 
 import FreeCAD
 import PathScripts.PathLog as PathLog
+import PathScripts.PathPreferences as PathPreferences
 import sys
-
-from PathScripts.PathPreferences import PathPreferences
 
 PathLog.setLevel(PathLog.Level.INFO, PathLog.thisModule())
 
@@ -46,11 +45,11 @@ class PostProcessor:
 
         postname = processor + "_post"
         namespace = {}
-        
+
         #can't modify function local scope with exec in python3
         exec("import %s as current_post" % postname, namespace)
         current_post = namespace['current_post']
-        
+
         # make sure the script is reloaded if it was previously loaded
         # should the script have been imported for the first time above
         # then the initialization code of the script gets executed twice

@@ -126,12 +126,22 @@ class ObjectOp(PathOp.ObjectOp):
 
         self.areaOpOnChanged(obj, prop)
 
-    def opSetDefaultValues(self, obj):
+    def opOnDocumentRestored(self, obj):
+        for prop in ['AreaParams', 'PathParams', 'removalshape']:
+            if hasattr(obj, prop):
+                obj.setEditorMode(prop, 2)
+        self.areaOpOnDocumentRestored(obj)
+
+    def areaOpOnDocumentRestored(self, obj):
+        '''areaOpOnDocumentRestored(obj) ... overwrite to fully restore receiver'''
+        pass
+
+    def opSetDefaultValues(self, obj, job):
         '''opSetDefaultValues(obj) ... base implementation, do not overwrite.
         The base implementation sets the depths and heights based on the
         areaOpShapeForDepths() return value.
-        Do not overwrite, overwrite areaOpSetDefaultValues(obj) instead.'''
-        PathLog.debug("opSetDefaultValues(%s)" % (obj.Label))
+        Do not overwrite, overwrite areaOpSetDefaultValues(obj, job) instead.'''
+        PathLog.debug("opSetDefaultValues(%s, %s)" % (obj.Label, job.Label))
         if PathOp.FeatureDepths & self.opFeatures(obj):
             try:
                 shape = self.areaOpShapeForDepths(obj)
@@ -146,10 +156,10 @@ class ObjectOp(PathOp.ObjectOp):
                 obj.OpStartDepth      =  1.0
                 obj.OpFinalDepth      =  0.0
 
-        self.areaOpSetDefaultValues(obj)
+        self.areaOpSetDefaultValues(obj, job)
 
-    def areaOpSetDefaultValues(self, obj):
-        '''areaOpSetDefaultValues(obj) ... overwrite to set initial values of operation specific properties.
+    def areaOpSetDefaultValues(self, obj, job):
+        '''areaOpSetDefaultValues(obj, job) ... overwrite to set initial values of operation specific properties.
         Can safely be overwritten by subclasses.'''
         pass
 
@@ -238,6 +248,16 @@ class ObjectOp(PathOp.ObjectOp):
             start = None
 
         shapes = self.areaOpShapes(obj)
+
+        jobs = [{
+            'x': s[0].BoundBox.XMax,
+            'y': s[0].BoundBox.YMax,
+            'shape': s
+        } for s in shapes]
+
+        jobs = PathUtils.sort_jobs(jobs, ['x', 'y'])
+
+        shapes = [j['shape'] for j in jobs]
 
         sims = []
         for (shape, isHole) in shapes:

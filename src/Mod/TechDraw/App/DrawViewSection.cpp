@@ -106,13 +106,14 @@ DrawViewSection::DrawViewSection()
     static const char *sgroup = "Section";
     static const char *fgroup = "Cut Surface Format";
 
-
     ADD_PROPERTY_TYPE(SectionSymbol ,("A"),sgroup,App::Prop_None,"The identifier for this section");
     ADD_PROPERTY_TYPE(BaseView ,(0),sgroup,App::Prop_None,"2D View source for this Section");
+    BaseView.setScope(App::LinkScope::Global);
     ADD_PROPERTY_TYPE(SectionNormal ,(0,0,1.0) ,sgroup,App::Prop_None,"Section Plane normal direction");  //direction of extrusion of cutting prism
     ADD_PROPERTY_TYPE(SectionOrigin ,(0,0,0) ,sgroup,App::Prop_None,"Section Plane Origin");
     SectionDirection.setEnums(SectionDirEnums);
     ADD_PROPERTY_TYPE(SectionDirection,((long)0),sgroup, App::Prop_None, "Direction in Base View for this Section");
+    ADD_PROPERTY_TYPE(FuseBeforeCut ,(false),sgroup,App::Prop_None,"Merge Source(s) into a single shape before cutting");
 
     ADD_PROPERTY_TYPE(FileHatchPattern ,(""),fgroup,App::Prop_None,"The hatch pattern file for the cut surface");
     ADD_PROPERTY_TYPE(NameGeomPattern ,(""),fgroup,App::Prop_None,"The pattern name for geometric hatching");
@@ -162,19 +163,24 @@ void DrawViewSection::onChanged(const App::Property* prop)
     }
     if (prop == &FileHatchPattern    ||
         prop == &NameGeomPattern ) {
-      if ((!FileHatchPattern.isEmpty())  &&
-          (!NameGeomPattern.isEmpty())) {
-              std::vector<PATLineSpec> specs = 
-                               DrawGeomHatch::getDecodedSpecsFromFile(FileHatchPattern.getValue(),NameGeomPattern.getValue());
-              m_lineSets.clear();
-              for (auto& hl: specs) {
-                  //hl.dump("hl from section");
-                  LineSet ls;
-                  ls.setPATLineSpec(hl);
-                  m_lineSets.push_back(ls);
-              }
-                  
-      }
+        std::string fileSpec = FileHatchPattern.getValue();
+        Base::FileInfo fi(fileSpec);
+        std::string ext = fi.extension();
+        if ( (ext == "pat") ||
+             (ext == "PAT") ) {
+            if ((!FileHatchPattern.isEmpty())  &&
+                (!NameGeomPattern.isEmpty())) {
+                std::vector<PATLineSpec> specs = 
+                           DrawGeomHatch::getDecodedSpecsFromFile(FileHatchPattern.getValue(),NameGeomPattern.getValue());
+                m_lineSets.clear();
+                for (auto& hl: specs) {
+                    //hl.dump("hl from section");
+                    LineSet ls;
+                    ls.setPATLineSpec(hl);
+                    m_lineSets.push_back(ls);
+                }
+            }
+        }
     }
 
     DrawView::onChanged(prop);
@@ -190,9 +196,22 @@ App::DocumentObjectExecReturn *DrawViewSection::execute(void)
     if (!base->getTypeId().isDerivedFrom(TechDraw::DrawViewPart::getClassTypeId()))
         return new App::DocumentObjectExecReturn("BaseView object is not a DrawViewPart object");
 
-    TopoDS_Shape baseShape = static_cast<TechDraw::DrawViewPart*>(base)->getSourceShapeFused();
+    TopoDS_Shape baseShape;
+    if (FuseBeforeCut.getValue()) {
+        baseShape = static_cast<TechDraw::DrawViewPart*>(base)->getSourceShapeFused();
+    } else {
+        baseShape = static_cast<TechDraw::DrawViewPart*>(base)->getSourceShape();
+    }
+    
     if (baseShape.IsNull()) {
-        Base::Console().Log("DVS::execute - baseShape is Null\n");
+        bool isRestoring = getDocument()->testStatus(App::Document::Status::Restoring);
+        if (isRestoring) {
+            Base::Console().Warning("DVS::execute - base shape is invalid - (but document is restoring) - %s\n",
+                                getNameInDocument());
+        } else {
+            Base::Console().Error("Error: DVS::execute - base shape is Null. - %s\n",
+                                  getNameInDocument());
+        }
         return new App::DocumentObjectExecReturn("BaseView Source object is Null");
     }
 
@@ -245,6 +264,7 @@ App::DocumentObjectExecReturn *DrawViewSection::execute(void)
         return DrawView::execute();
     }
 
+    m_cutShape = rawShape;
     gp_Pnt inputCenter;
     try {
         inputCenter = TechDrawGeometry::findCentroid(rawShape,
@@ -385,7 +405,7 @@ TopoDS_Face DrawViewSection::projectFace(const TopoDS_Shape &face,
                                      const Base::Vector3d &direction)
 {
     if(face.IsNull()) {
-        throw Base::Exception("DrawViewSection::projectFace - input Face is NULL");
+        throw Base::ValueError("DrawViewSection::projectFace - input Face is NULL");
     }
 
     Base::Vector3d origin(faceCenter.X(),faceCenter.Y(),faceCenter.Z());
@@ -612,6 +632,12 @@ void DrawViewSection::getParameters()
         }
     std::string patternName = hGrp->GetASCII("PatternName","Diamond");
     NameGeomPattern.setValue(patternName);
+
+    hGrp = App::GetApplication().GetUserParameter()
+        .GetGroup("BaseApp")->GetGroup("Preferences")->GetGroup("Mod/TechDraw/General");
+
+    bool fuseFirst = hGrp->GetBool("SectionFuseFirst",true);
+    FuseBeforeCut.setValue(fuseFirst);
 }
 
 // Python Drawing feature ---------------------------------------------------------

@@ -22,6 +22,7 @@
 #*                                                                         *
 #***************************************************************************
 
+import sys
 import FreeCAD, time
 if FreeCAD.GuiUp:
     import FreeCADGui, Arch_rc, os
@@ -109,7 +110,11 @@ class _ArchSchedule:
                 # blank line
                 continue
             # write description
-            obj.Result.set("A"+str(i+2),obj.Description[i].encode("utf8"))
+            if sys.version_info.major >= 3:
+                # use unicode for python3
+                obj.Result.set("A"+str(i+2), obj.Description[i])
+            else:
+                obj.Result.set("A"+str(i+2), obj.Description[i].encode("utf8"))
             if verbose:
                 l= "OPERATION: "+obj.Description[i]
                 print (l)
@@ -122,6 +127,7 @@ class _ArchSchedule:
                 if objs:
                     objs = objs.split(";")
                     objs = [FreeCAD.ActiveDocument.getObject(o) for o in objs]
+                    objs = [o for o in objs if o != None]
                 else:
                     objs = FreeCAD.ActiveDocument.Objects
                 if len(objs) == 1:
@@ -130,6 +136,9 @@ class _ArchSchedule:
                         objs = objs[0].Group
                 objs = Draft.getGroupContents(objs,walls=True,addgroups=True)
                 objs = Arch.pruneIncluded(objs,strict=True)
+                # remove the schedule object and its result from the list
+                objs = [o for o in objs if not o == obj]
+                objs = [o for o in objs if not o == obj.Result]
                 if obj.Filter[i]:
                     # apply filters
                     nobjs = []
@@ -155,15 +164,15 @@ class _ArchSchedule:
                             elif args[0].upper() == "!TYPE":
                                 if Draft.getType(o).upper() == args[1].upper():
                                     ok = False
-                            elif args[0].upper() == "ROLE":
-                                if hasattr(o,"Role"):
-                                    if o.Role.upper() != args[1].upper():
+                            elif args[0].upper() == "IFCTYPE":
+                                if hasattr(o,"IfcType"):
+                                    if o.IfcType.upper() != args[1].upper():
                                         ok = False
                                 else:
                                     ok = False
-                            elif args[0].upper() == "!ROLE":
-                                if hasattr(o,"Role"):
-                                    if o.Role.upper() == args[1].upper():
+                            elif args[0].upper() == "!IFCTYPE":
+                                if hasattr(o,"IfcType"):
+                                    if o.IfcType.upper() == args[1].upper():
                                         ok = False
                         if ok:
                             nobjs.append(o)
@@ -199,7 +208,9 @@ class _ArchSchedule:
                     val = sumval
                     # get unit
                     if obj.Unit[i]:
-                        ustr = obj.Unit[i].encode("utf8")
+                        ustr = obj.Unit[i]
+                        if sys.version_info.major < 3:
+                            ustr = ustr.encode("utf8")
                         unit = ustr.replace("²","^2")
                         unit = unit.replace("³","^3")
                         if "2" in unit:
@@ -217,6 +228,7 @@ class _ArchSchedule:
                         obj.Result.set("B"+str(i+2),str(val))
                     if verbose:
                         print ("TOTAL:"+34*" "+str(val))
+        obj.Result.recompute()
 
     def __getstate__(self):
         return self.Type
@@ -314,7 +326,7 @@ class _ArchScheduleTaskPanel:
         self.form.list.setRowCount(0)
 
     def importCSV(self):
-        filename = QtGui.QFileDialog.getOpenFileName(QtGui.qApp.activeWindow(), translate("Arch","Import CSV File"), None, "CSV file (*.csv)");
+        filename = QtGui.QFileDialog.getOpenFileName(QtGui.QApplication.activeWindow(), translate("Arch","Import CSV File"), None, "CSV file (*.csv)");
         if filename:
             self.form.list.clearContents()
             import csv
@@ -333,7 +345,7 @@ class _ArchScheduleTaskPanel:
     def exportCSV(self):
         if self.obj:
             if self.obj.Result:
-                filename = QtGui.QFileDialog.getSaveFileName(QtGui.qApp.activeWindow(), translate("Arch","Export CSV File"), None, "CSV file (*.csv)");
+                filename = QtGui.QFileDialog.getSaveFileName(QtGui.QApplication.activeWindow(), translate("Arch","Export CSV File"), None, "CSV file (*.csv)");
                 if filename:
                     # the following line crashes, couldn't fnid out why
                     # self.obj.Result.exportFile(str(filename[0].encode("utf8")))

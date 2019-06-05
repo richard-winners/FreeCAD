@@ -8,6 +8,8 @@
 *.exp
 *.dep
 *.manifest
+*.o
+*.orig
 qrc_*.cpp
 BuildLog.htm
 cmake_install.cmake
@@ -34,3 +36,7 @@ OpenSCAD_rc.py
 /\.idea/
 .tags
 tags
+/\.vscode/
+
+# crowdin file
+src/Tools/freecad.zip

@@ -28,7 +28,7 @@ __url__ = ["http://www.freecadweb.org"]
 ## \defgroup DRAFTGEOMUTILS DraftGeomUtils
 #  \ingroup DRAFT
 #  \brief Shape manipulation utilities for the Draft workbench
-# 
+#
 # Shapes manipulation utilities
 
 ## \addtogroup DRAFTGEOMUTILS
@@ -47,7 +47,14 @@ params = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Draft")
 
 def precision():
     "precision(): returns the Draft precision setting"
-    return params.GetInt("precision",6)
+    # Set precision level with a cap to avoid overspecification that:-
+    #  1 - whilst it is precise enough (e.g. that OCC would consider 2 points are conincident) (not sure what it should be 10 or otherwise);
+    #  2 - but FreeCAD / OCC can handle 'internally' (e.g. otherwise user may set something like 15 that the code would never consider 2 points are coincident as internal float is not that precise);
+
+    precisionMax = 10
+    precisionInt = params.GetInt("precision",6)
+    precisionInt = (precisionInt if precisionInt <=10 else precisionMax)
+    return precisionInt								#return params.GetInt("precision",6)
 
 def vec(edge):
     "vec(edge) or vec(line): returns a vector from an edge or a Part.LineSegment"
@@ -347,7 +354,7 @@ def findIntersection(edge1,edge2,infinite1=False,infinite2=False,ex1=False,ex2=F
 
         int = []
         # first check for coincident endpoints
-        if (pt1 in [pt3,pt4]):
+        if DraftVecUtils.equals(pt1,pt3) or DraftVecUtils.equals(pt1,pt4):
             if findAll:
                 int.append(pt1)
             else:
@@ -415,7 +422,7 @@ def findIntersection(edge1,edge2,infinite1=False,infinite2=False,ex1=False,ex2=F
         rad1 , rad2  = edge1.Curve.Radius, edge2.Curve.Radius
         axis1, axis2 = edge1.Curve.Axis  , edge2.Curve.Axis
         c2c          = cent2.sub(cent1)
-        
+
         if cent1.sub(cent2).Length == 0:
             # circles are concentric
             return []
@@ -563,6 +570,8 @@ def orientEdge(edge, normal=None, make_arc=False):
     else:
         axis = edge.Placement.Rotation.Axis
         angle = -1*edge.Placement.Rotation.Angle*FreeCAD.Units.Radian
+    if axis == Vector (0.0, 0.0, 0.0):
+        axis = Vector (0.0, 0.0, 1.0)
     if angle:
         edge.rotate(base, axis, angle)
     if isinstance(edge.Curve,Part.Line):
@@ -638,8 +647,10 @@ def findClosest(basepoint,pointslist):
     in a list of 3d points, finds the closest point to the base point.
     an index from the list is returned.
     '''
-    if not pointslist: return None
-    smallest = 100000
+    npoint = None
+    if not pointslist:
+        return None
+    smallest = 1000000
     for n in range(len(pointslist)):
         new = basepoint.sub(pointslist[n]).Length
         if new < smallest:
@@ -888,13 +899,14 @@ def flattenWire(wire):
     verts = [o]
     for v in wire.Vertexes[1:]:
         verts.append(plane.projectPoint(v.Point))
-    verts.append(o)
+    if wire.isClosed():
+        verts.append(o)
     w = Part.makePolygon(verts)
     return w
 
 def findWires(edgeslist):
     return [ Part.Wire(e) for e in Part.sortEdges(edgeslist)]
-    
+
 def findWiresOld2(edgeslist):
     '''finds connected wires in the given list of edges'''
 
@@ -1109,11 +1121,11 @@ def getNormal(shape):
         if (shape.ShapeType == "Face") and hasattr(shape,"normalAt"):
                 n = shape.copy().normalAt(0.5,0.5)
         elif shape.ShapeType == "Edge":
-                if geomType(shape.Edges[0]) == "Circle":
+                if geomType(shape.Edges[0]) in ["Circle","Ellipse"]:
                         n = shape.Edges[0].Curve.Axis
         else:
                 for e in shape.Edges:
-                        if geomType(e) == "Circle":
+                        if geomType(e) in ["Circle","Ellipse"]:
                                 n = e.Curve.Axis
                                 break
                         e1 = vec(shape.Edges[0])
@@ -1164,7 +1176,7 @@ def offsetWire(wire,dvec,bind=False,occ=False):
     the wire. If bind is True (and the shape is open), the original
     wire and the offsetted one are bound by 2 edges, forming a face.
     '''
-    edges = Part.__sortEdges__(wire.Edges)
+    edges = wire.Edges								# Seems has repeatedly sortEdges, remark out here - edges = Part.__sortEdges__(wire.Edges)
     norm = getNormal(wire)
     closed = isReallyClosed(wire)
     nedges = []
@@ -1181,6 +1193,14 @@ def offsetWire(wire,dvec,bind=False,occ=False):
             return None
         else:
             return off
+
+    # vec of first edge depends on its geometry
+    e = edges[0]
+    if isinstance(e.Curve,Part.Circle):
+        firstVec = e.tangentAt(e.FirstParameter)
+    else:
+        firstVec = vec(e)
+
     for i in range(len(edges)):
         curredge = edges[i]
         delta = dvec
@@ -1189,7 +1209,7 @@ def offsetWire(wire,dvec,bind=False,occ=False):
                 v = curredge.tangentAt(curredge.FirstParameter)
             else:
                 v = vec(curredge)
-            angle = DraftVecUtils.angle(vec(edges[0]),v,norm)
+            angle = DraftVecUtils.angle(firstVec,v,norm)			# use vec deduced depending on geometry instead of - angle = DraftVecUtils.angle(vec(edges[0]),v,norm)
             delta = DraftVecUtils.rotate(delta,angle,norm)
         #print("edge ",i,": ",curredge.Curve," ",curredge.Orientation," parameters:",curredge.ParameterRange," vector:",delta)
         nedge = offset(curredge,delta,trim=True)
@@ -1210,6 +1230,8 @@ def offsetWire(wire,dvec,bind=False,occ=False):
 def connect(edges,closed=False):
         '''connects the edges in the given list by their intersections'''
         nedges = []
+        v2 = None
+
         for i in range(len(edges)):
             curr = edges[i]
             #print("debug: DraftGeomUtils.connect edge ",i," : ",curr.Vertexes[0].Point,curr.Vertexes[-1].Point)
@@ -1227,7 +1249,13 @@ def connect(edges,closed=False):
                 else:
                     next = None
             if prev:
-                #print("debug: DraftGeomUtils.connect prev : ",prev.Vertexes[0].Point,prev.Vertexes[-1].Point)
+              #print("debug: DraftGeomUtils.connect prev : ",prev.Vertexes[0].Point,prev.Vertexes[-1].Point)
+
+              # If prev v2 had been calculated, do not calculate again, just use it as current v1 - avoid chance of slight difference in result
+              if v2:
+                v1 = v2
+
+              else:
                 i = findIntersection(curr,prev,True,True)
                 if i:
                     v1 = i[DraftVecUtils.closest(curr.Vertexes[0].Point,i)]
@@ -1379,8 +1407,8 @@ def findClosestCircle(point,circles):
             closest = c
     return closest
 
-def isCoplanar(faces):
-    "checks if all faces in the given list are coplanar"
+def isCoplanar(faces,tolerance=0):
+    "isCoplanar(faces,[tolerance]): checks if all faces in the given list are coplanar. Tolerance is the max deviation to be considered coplanar"
     if len(faces) < 2:
         return True
     base =faces[0].normalAt(0,0)
@@ -1388,7 +1416,7 @@ def isCoplanar(faces):
         for v in faces[i].Vertexes:
             chord = v.Point.sub(faces[0].Vertexes[0].Point)
             dist = DraftVecUtils.project(chord,base)
-            if round(dist.Length,precision()) > 0:
+            if round(dist.Length,precision()) > tolerance:
                 return False
     return True
 
@@ -2044,7 +2072,7 @@ def curvetowire(obj,steps):
 def cleanProjection(shape,tessellate=True,seglength=.05):
     "returns a valid compound of edges, by recreating them"
     # this is because the projection algorithm somehow creates wrong shapes.
-    # they dispay fine, but on loading the file the shape is invalid
+    # they display fine, but on loading the file the shape is invalid
     # Now with tanderson's fix to ProjectionAlgos, that isn't the case, but this
     # can be used for tessellating ellipses and splines for DXF output-DF
     oldedges = shape.Edges
@@ -2433,6 +2461,27 @@ def circleFrom2PointsRadius(p1, p2, radius):
     else: return None
 
 
+def arcFrom2Pts(firstPt,lastPt,center,axis=None):
+
+    '''Builds an arc with center and 2 points, can be oriented with axis'''
+
+    radius1  = firstPt.sub(center).Length
+    radius2  = lastPt.sub(center).Length
+    if round(radius1-radius2,4) != 0 : # (PREC = 4 = same as Part Module),  Is it possible ?
+        return None
+
+    thirdPt = Vector(firstPt.sub(center).add(lastPt).sub(center))
+    thirdPt.normalize()
+    thirdPt.scale(radius1,radius1,radius1)
+    thirdPt = thirdPt.add(center)
+    newArc = Part.Edge(Part.Arc(firstPt,thirdPt,lastPt))
+    if not axis is None and newArc.Curve.Axis.dot(axis) < 0 :
+        thirdPt = thirdPt.sub(center)
+        thirdPt.scale(-1,-1,-1)
+        thirdPt = thirdPt.add(center)
+        newArc = Part.Edge(Part.Arc(firstPt,thirdPt,lastPt))
+    return newArc
+
 
 #############################33 to include
 
@@ -2477,7 +2526,7 @@ def outerSoddyCircle(circle1, circle2, circle3):
 
         z = q4 / (k4 + 0j)
 
-        # If the formula is not solveable, we return no circle.
+        # If the formula is not solvable, we return no circle.
         if (not z or not (1 / k4)):
             return None
 
@@ -2529,7 +2578,7 @@ def innerSoddyCircle(circle1, circle2, circle3):
 
         z = q4 / (k4 + 0j)
 
-        # If the formula is not solveable, we return no circle.
+        # If the formula is not solvable, we return no circle.
         if (not z or not (1 / k4)):
             return None
 

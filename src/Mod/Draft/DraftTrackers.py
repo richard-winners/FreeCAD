@@ -116,7 +116,7 @@ class snapTracker(Tracker):
         color = coin.SoBaseColor()
         color.rgb = FreeCADGui.draftToolBar.getDefaultColor("snap")
         self.marker = coin.SoMarkerSet() # this is the marker symbol
-        self.marker.markerIndex = coin.SoMarkerSet.CIRCLE_FILLED_9_9
+        self.marker.markerIndex = FreeCADGui.getMarkerIndex("", 9)
         self.coords = coin.SoCoordinate3() # this is the coordinate
         self.coords.point.setValue((0,0,0))
         node = coin.SoAnnotation()
@@ -126,18 +126,7 @@ class snapTracker(Tracker):
         Tracker.__init__(self,children=[node],name="snapTracker")
 
     def setMarker(self,style):
-        if (style == "square"):
-            self.marker.markerIndex = coin.SoMarkerSet.DIAMOND_FILLED_9_9
-        elif (style == "circle"):
-            self.marker.markerIndex = coin.SoMarkerSet.CIRCLE_LINE_9_9
-        elif (style == "quad"):
-            self.marker.markerIndex = coin.SoMarkerSet.SQUARE_FILLED_9_9
-        elif (style == "empty"):
-            self.marker.markerIndex = coin.SoMarkerSet.SQUARE_LINE_9_9
-        elif (style == "cross"):
-            self.marker.markerIndex = coin.SoMarkerSet.CROSS_9_9
-        else:
-            self.marker.markerIndex = coin.SoMarkerSet.CIRCLE_FILLED_9_9
+        self.marker.markerIndex = FreeCADGui.getMarkerIndex(style, 9)
 
     def setCoords(self,point):
         self.coords.point.setValue((point.x,point.y,point.z))
@@ -390,70 +379,84 @@ class bezcurveTracker(Tracker):
     def __init__(self,dotted=False,scolor=None,swidth=None,points = []):
         self.bezcurve = None
         self.points = points
+        self.degree = None
         self.trans = coin.SoTransform()
         self.sep = coin.SoSeparator()
         self.recompute()
         Tracker.__init__(self,dotted,scolor,swidth,[self.trans,self.sep],name="bezcurveTracker")
         
-    def update(self, points):
+    def update(self, points, degree=None):
         self.points = points
+        if degree:
+            self.degree = degree
         self.recompute()
             
     def recompute(self):
+        
+        if self.bezcurve:
+            for seg in self.bezcurve:
+                self.sep.removeChild(seg)
+                seg = None
+        
+        self.bezcurve = []
+        
         if (len(self.points) >= 2):
-            if self.bezcurve: self.sep.removeChild(self.bezcurve)
-            self.bezcurve = None
-###            c =  Part.BSplineCurve()  #!!!!!!!!!!!!!!!
-            c = Part.BezierCurve()
-            # DNC: allows to close the curve by placing ends close to each other
-            if ( len(self.points) >= 3 ) and ( (self.points[0] - self.points[-1]).Length < Draft.tolerance() ):
-                # YVH: Added a try to bypass some hazardous situations
-                try:
-###                    c.interpolate(self.points[:-1], True)  #!!!!!!!!!!!!
-                       c.setPoles(self.points[:-1])
-                except Part.OCCError:
-                    pass
-            elif self.points:
-                try:
-###                   c.interpolate(self.points, False)  #!!!!!!!
-                      c.setPoles(self.points)
-                except Part.OCCError:
-                    pass
-            c = c.toShape()                              #???? c = Part.Edge(c)?, c = Part.Wire(c)??
-            buf=c.writeInventor(2,0.01)
+
+            if self.degree:
+          
+                poles=self.points[1:]
+
+                segpoleslst = [poles[x:x+self.degree] for x in range(0, len(poles), (self.degree or 1))]
+            else:
+                segpoleslst = [self.points]
+            
+            startpoint=self.points[0]
+
+                
+            for segpoles in segpoleslst:
+                c = Part.BezierCurve() #last segment may have lower degree
+                c.increase(len(segpoles))
+                c.setPoles([startpoint]+segpoles)
+                c = c.toShape()
+                startpoint = segpoles[-1]
+            
+                buf=c.writeInventor(2,0.01)
             #fp=open("spline.iv","w")
             #fp.write(buf)
             #fp.close()
-            try:
-                ivin = coin.SoInput()
-                ivin.setBuffer(buf)
-                ivob = coin.SoDB.readAll(ivin)
-            except:
-                # workaround for pivy SoInput.setBuffer() bug
-                import re
-                buf = buf.replace("\n","")
-                pts = re.findall("point \[(.*?)\]",buf)[0]
-                pts = pts.split(",")
-                pc = []
-                for p in pts:
-                    v = p.strip().split()
-                    pc.append([float(v[0]),float(v[1]),float(v[2])])
-                coords = coin.SoCoordinate3()
-                coords.point.setValues(0,len(pc),pc)
-                line = coin.SoLineSet()
-                line.numVertices.setValue(-1)
-                self.bezcurve = coin.SoSeparator()
-                self.bezcurve.addChild(coords)
-                self.bezcurve.addChild(line)
-                self.sep.addChild(self.bezcurve)
-            else:
-                if ivob and ivob.getNumChildren() > 1:
-                    self.bezcurve = ivob.getChild(1).getChild(0)
-                    self.bezcurve.removeChild(self.bezcurve.getChild(0))
-                    self.bezcurve.removeChild(self.bezcurve.getChild(0))
-                    self.sep.addChild(self.bezcurve)
+                try:
+                    ivin = coin.SoInput()
+                    ivin.setBuffer(buf)
+                    ivob = coin.SoDB.readAll(ivin)
+                except:
+                    # workaround for pivy SoInput.setBuffer() bug
+                    import re
+                    buf = buf.replace("\n","")
+                    pts = re.findall("point \[(.*?)\]",buf)[0]
+                    pts = pts.split(",")
+                    pc = []
+                    for p in pts:
+                        v = p.strip().split()
+                        pc.append([float(v[0]),float(v[1]),float(v[2])])
+                    coords = coin.SoCoordinate3()
+                    coords.point.setValues(0,len(pc),pc)
+                    line = coin.SoLineSet()
+                    line.numVertices.setValue(-1)
+                    bezcurveseg = coin.SoSeparator()
+                    bezcurveseg.addChild(coords)
+                    bezcurveseg.addChild(line)
+                    self.sep.addChild(bezcurveseg)
                 else:
-                    FreeCAD.Console.PrintWarning("bezcurveTracker.recompute() failed to read-in Inventor string\n")
+                    if ivob and ivob.getNumChildren() > 1:
+                        bezcurveseg = ivob.getChild(1).getChild(0)
+                        bezcurveseg.removeChild(bezcurveseg.getChild(0))
+                        bezcurveseg.removeChild(bezcurveseg.getChild(0))
+                        self.sep.addChild(bezcurveseg)
+                    else:
+                        FreeCAD.Console.PrintWarning("bezcurveTracker.recompute() failed to read-in Inventor string\n")
+                self.bezcurve.append(bezcurveseg)
+
+                        
 #######################################
 class arcTracker(Tracker):
     "An arc tracker"
@@ -464,6 +467,7 @@ class arcTracker(Tracker):
         self.trans = coin.SoTransform()
         self.trans.translation.setValue([0,0,0])
         self.sep = coin.SoSeparator()
+        self.autoinvert = True
         if normal:
             self.normal = normal
         else:
@@ -519,7 +523,7 @@ class arcTracker(Tracker):
 
     def setEndPoint(self,pt):
         "sets the end angle from a point"
-        self.setEndAngle(self.getAngle(pt))
+        self.setEndAngle(-self.getAngle(pt))
                 
     def setApertureAngle(self,ang):
         "sets the end angle by giving the aperture angle"
@@ -532,7 +536,7 @@ class arcTracker(Tracker):
         if self.circle: 
             self.sep.removeChild(self.circle)
         self.circle = None
-        if (self.endangle < self.startangle):
+        if (self.endangle < self.startangle) or not self.autoinvert:
             c = Part.makeCircle(1,Vector(0,0,0),self.normal,self.endangle,self.startangle)
         else:
             c = Part.makeCircle(1,Vector(0,0,0),self.normal,self.startangle,self.endangle)
@@ -571,7 +575,7 @@ class arcTracker(Tracker):
 class ghostTracker(Tracker):
     '''A Ghost tracker, that allows to copy whole object representations.
     You can pass it an object or a list of objects, or a shape.'''
-    def __init__(self,sel):
+    def __init__(self,sel,dotted=False,scolor=None,swidth=None):
         self.trans = coin.SoTransform()
         self.trans.translation.setValue([0,0,0])
         self.children = [self.trans]
@@ -581,13 +585,13 @@ class ghostTracker(Tracker):
         for obj in sel:
             rootsep.addChild(self.getNode(obj))
         self.children.append(rootsep)        
-        Tracker.__init__(self,children=self.children,name="ghostTracker")
+        Tracker.__init__(self,dotted,scolor,swidth,children=self.children,name="ghostTracker")
 
     def update(self,obj):
         "recreates the ghost from a new object"
         obj.ViewObject.show()
         self.finalize()
-        sep = getNode(obj)
+        sep = self.getNode(obj)
         Tracker.__init__(self,children=[self.sep])
         self.on()
         obj.ViewObject.hide()
@@ -610,6 +614,7 @@ class ghostTracker(Tracker):
 
     def getNode(self,obj):
         "returns a coin node representing the given object"
+        import Part
         if isinstance(obj,Part.Shape):
             return self.getNodeLight(obj)
         elif obj.isDerivedFrom("Part::Feature"):
@@ -617,18 +622,26 @@ class ghostTracker(Tracker):
         else:
             return self.getNodeFull(obj)
 
-    def getNode(self,obj):
+    def getNodeFull(self,obj):
         "gets a coin node which is a full copy of the current representation"
         sep = coin.SoSeparator()
         try:
             sep.addChild(obj.ViewObject.RootNode.copy())
+            # add Part container offset
+            if hasattr(obj,"getGlobalPlacement"):
+                if obj.Placement != obj.getGlobalPlacement():
+                    if sep.getChild(0).getNumChildren() > 0:
+                        if isinstance(sep.getChild(0).getChild(0),coin.SoTransform):
+                            gpl = obj.getGlobalPlacement()
+                            sep.getChild(0).getChild(0).translation.setValue(tuple(gpl.Base))
+                            sep.getChild(0).getChild(0).rotation.setValue(gpl.Rotation.Q)
         except:
-            pass
+            print("ghostTracker: Error retrieving coin node (full)")
         return sep
 
     def getNodeLight(self,shape):
         "extract a lighter version directly from a shape"
-        # very error-prone, will be obsoleted ASAP
+        # error-prone
         sep = coin.SoSeparator()
         try:
             inputstr = coin.SoInput()
@@ -638,7 +651,7 @@ class ghostTracker(Tracker):
             sep.addChild(coinobj.getChildren()[1])
             # sep.addChild(coinobj)
         except:
-            print("Error retrieving coin node")
+            print("ghostTracker: Error retrieving coin node (light)")
         return sep
         
     def getMatrix(self):
@@ -665,7 +678,7 @@ class ghostTracker(Tracker):
 class editTracker(Tracker):
     "A node edit tracker"
     def __init__(self,pos=Vector(0,0,0),name="None",idx=0,objcol=None,\
-            marker=coin.SoMarkerSet.SQUARE_FILLED_9_9,inactive=False):
+            marker=FreeCADGui.getMarkerIndex("quad", 9),inactive=False):
         color = coin.SoBaseColor()
         if objcol:
             color.rgb = objcol[:3]
@@ -826,7 +839,7 @@ class gridTracker(Tracker):
         for i in range(numlines+1):
             curr = -bound + i*self.space
             z = 0
-            if i/float(self.mainlines) == i/self.mainlines:
+            if i/float(self.mainlines) == i//self.mainlines:
                 if round(curr,4) == 0:
                     apts.extend([[-bound,curr,z],[bound,curr,z]])
                     apts.extend([[curr,-bound,z],[curr,bound,z]])
@@ -897,11 +910,13 @@ class gridTracker(Tracker):
     
 class boxTracker(Tracker):                
     "A box tracker, can be based on a line object"
-    def __init__(self,line=None,width=0.1,height=1):
+    def __init__(self,line=None,width=0.1,height=1,shaded=False):
         self.trans = coin.SoTransform()
         m = coin.SoMaterial()
         m.transparency.setValue(0.8)
         m.diffuseColor.setValue([0.4,0.4,0.6])
+        w = coin.SoDrawStyle()
+        w.style = coin.SoDrawStyle.LINES
         self.cube = coin.SoCube()
         self.cube.height.setValue(width)
         self.cube.depth.setValue(height)
@@ -909,7 +924,10 @@ class boxTracker(Tracker):
         if line:
             self.baseline = line
             self.update()
-        Tracker.__init__(self,children=[self.trans,m,self.cube],name="boxTracker")
+        if shaded:
+            Tracker.__init__(self,children=[self.trans,m,self.cube],name="boxTracker")
+        else:
+            Tracker.__init__(self,children=[self.trans,w,self.cube],name="boxTracker")
 
     def update(self,line=None,normal=None):
         import WorkingPlane, DraftGeomUtils

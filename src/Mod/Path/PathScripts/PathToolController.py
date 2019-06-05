@@ -28,6 +28,7 @@ import Part
 import Path
 import PathScripts
 import PathScripts.PathLog as PathLog
+import PathScripts.PathToolEdit as PathToolEdit
 import PathScripts.PathUtil as PathUtil
 
 from FreeCAD import Units
@@ -36,6 +37,7 @@ from PySide import QtCore
 if FreeCAD.GuiUp:
     import FreeCADGui
     import PathScripts.PathGui as PathGui
+    from PySide import QtGui
 
 if False:
     PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
@@ -80,8 +82,10 @@ class ToolController:
         obj.addProperty("App::PropertySpeed", "VertRapid", "Rapid", QtCore.QT_TRANSLATE_NOOP("App::Property", "Rapid rate for vertical moves in Z"))
         obj.addProperty("App::PropertySpeed", "HorizRapid", "Rapid", QtCore.QT_TRANSLATE_NOOP("App::Property", "Rapid rate for horizontal moves"))
         obj.Proxy = self
-        mode = 2
-        obj.setEditorMode('Placement', mode)
+        obj.setEditorMode('Placement', 2)
+
+    def onDocumentRestored(self, obj):
+        obj.setEditorMode('Placement', 2)
 
     def setFromTemplate(self, obj, template):
         '''setFromTemplate(obj, xmlItem) ... extract properties from xmlItem and assign to receiver.'''
@@ -164,6 +168,8 @@ class ViewProvider:
 
     def __init__(self, vobj):
         vobj.Proxy = self
+
+    def attach(self, vobj):
         mode = 2
         vobj.setEditorMode('LineWidth', mode)
         vobj.setEditorMode('MarkerColor', mode)
@@ -174,6 +180,7 @@ class ViewProvider:
         vobj.setEditorMode('ShapeColor', mode)
         vobj.setEditorMode('Transparency', mode)
         vobj.setEditorMode('Visibility', mode)
+        self.vobj = vobj
 
     def __getstate__(self):
         return None
@@ -201,20 +208,31 @@ class ViewProvider:
         # this is executed when a property of the APP OBJECT changes
         pass
 
-    def setEdit(self, vobj, mode):
-        # this is executed when the object is double-clicked in the tree
-        FreeCADGui.Control.closeDialog()
-        taskd = TaskPanel(vobj.Object)
-        FreeCADGui.Control.showDialog(taskd)
-        taskd.setupUi()
+    def setEdit(self, vobj=None, mode=0):
+        if 0 == mode:
+            if vobj is None:
+                vobj = self.vobj
+            FreeCADGui.Control.closeDialog()
+            taskd = TaskPanel(vobj.Object)
+            FreeCADGui.Control.showDialog(taskd)
+            taskd.setupUi()
 
-        FreeCAD.ActiveDocument.recompute()
+            FreeCAD.ActiveDocument.recompute()
 
-        return True
+            return True
+        return False
 
     def unsetEdit(self, vobj, mode):
         # this is executed when the user cancels or terminates edit mode
         return False
+
+    def setupContextMenu(self, vobj, menu):
+        PathLog.track()
+        for action in menu.actions():
+            menu.removeAction(action)
+        action = QtGui.QAction(translate('Path', 'Edit'), menu)
+        action.triggered.connect(self.setEdit)
+        menu.addAction(action)
 
 def Create(name = 'Default Tool', tool=None, toolNumber=1, assignViewProvider=True):
     PathLog.track(tool, toolNumber)
@@ -280,37 +298,7 @@ class ToolControllerEditor:
         self.vertRapid = PathGui.QuantitySpinBox(self.form.vertRapid, obj, 'VertRapid')
         self.horizRapid = PathGui.QuantitySpinBox(self.form.horizRapid, obj, 'HorizRapid')
 
-        self.toolDiameter = PathGui.QuantitySpinBox(self.form.toolDiameter, obj, 'Tool.Diameter')
-        self.toolLengthOffset = PathGui.QuantitySpinBox(self.form.toolLengthOffset, obj, 'Tool.LengthOffset')
-        self.toolFlatRadius = PathGui.QuantitySpinBox(self.form.toolFlatRadius, obj, 'Tool.FlatRadius')
-        self.toolCornerRadius = PathGui.QuantitySpinBox(self.form.toolCornerRadius, obj, 'Tool.CornerRadius')
-        self.toolCuttingEdgeAngle = PathGui.QuantitySpinBox(self.form.toolCuttingEdgeAngle, obj, 'Tool.CuttingEdgeAngle')
-        self.toolCuttingEdgeHeight = PathGui.QuantitySpinBox(self.form.toolCuttingEdgeHeight, obj, 'Tool.CuttingEdgeHeight')
-
-    def getType(self, tooltype):
-        "gets a combobox index number for a given type or viceversa"
-        toolslist = ["Drill", "CenterDrill", "CounterSink", "CounterBore",
-                     "Reamer", "Tap", "EndMill", "SlotCutter", "BallEndMill",
-                     "ChamferMill", "CornerRound", "Engraver"]
-        if isinstance(tooltype, str):
-            if tooltype in toolslist:
-                return toolslist.index(tooltype)
-            else:
-                return 0
-        else:
-            return toolslist[tooltype]
-
-    def getMaterial(self, material):
-        "gets a combobox index number for a given material or viceversa"
-        matslist = ["HighSpeedSteel", "HighCarbonToolSteel", "CastAlloy",
-                    "Carbide", "Ceramics", "Diamond", "Sialon"]
-        if isinstance(material, str):
-            if material in matslist:
-                return matslist.index(material)
-            else:
-                return 0
-        else:
-            return matslist[material]
+        self.editor = PathToolEdit.ToolEditor(obj.Tool, self.form.toolEditor)
 
     def updateUi(self):
         tc = self.obj
@@ -325,15 +313,7 @@ class ToolControllerEditor:
         if index >= 0:
             self.form.spindleDirection.setCurrentIndex(index)
 
-        self.form.toolName.setText(tc.Tool.Name)
-        self.form.toolType.setCurrentIndex(self.getType(tc.Tool.ToolType))
-        self.form.toolMaterial.setCurrentIndex(self.getMaterial(tc.Tool.Material))
-        self.toolDiameter.updateSpinBox()
-        self.toolLengthOffset.updateSpinBox()
-        self.toolFlatRadius.updateSpinBox()
-        self.toolCornerRadius.updateSpinBox()
-        self.toolCuttingEdgeAngle.updateSpinBox()
-        self.toolCuttingEdgeHeight.updateSpinBox()
+        self.editor.updateUI()
 
     def updateToolController(self):
         tc = self.obj
@@ -347,15 +327,9 @@ class ToolControllerEditor:
             tc.SpindleSpeed = self.form.spindleSpeed.value()
             tc.SpindleDir = self.form.spindleDirection.currentText()
 
-            tc.Tool.Name = str(self.form.toolName.text())
-            tc.Tool.ToolType = self.getType(self.form.toolType.currentIndex())
-            tc.Tool.Material = self.getMaterial(self.form.toolMaterial.currentIndex())
-            self.toolDiameter.updateProperty()
-            self.toolLengthOffset.updateProperty()
-            self.toolFlatRadius.updateProperty()
-            self.toolCornerRadius.updateProperty()
-            self.toolCuttingEdgeAngle.updateProperty()
-            self.toolCuttingEdgeHeight.updateProperty()
+            self.editor.updateTool()
+            tc.Tool = self.editor.tool
+
         except Exception as e:
             PathLog.error(translate("PathToolController", "Error updating TC: %s") % e)
 
@@ -367,19 +341,14 @@ class ToolControllerEditor:
         self.form.blockSignals(False)
 
     def setupUi(self):
+        self.editor.setupUI()
+
         self.form.tcName.editingFinished.connect(self.refresh)
         self.form.horizFeed.editingFinished.connect(self.refresh)
         self.form.vertFeed.editingFinished.connect(self.refresh)
         self.form.horizRapid.editingFinished.connect(self.refresh)
         self.form.vertRapid.editingFinished.connect(self.refresh)
 
-        self.form.toolName.editingFinished.connect(self.refresh)
-        self.form.toolDiameter.editingFinished.connect(self.refresh)
-        self.form.toolLengthOffset.editingFinished.connect(self.refresh)
-        self.form.toolFlatRadius.editingFinished.connect(self.refresh)
-        self.form.toolCornerRadius.editingFinished.connect(self.refresh)
-        self.form.toolCuttingEdgeAngle.editingFinished.connect(self.refresh)
-        self.form.toolCuttingEdgeHeight.editingFinished.connect(self.refresh)
 
 class TaskPanel:
 

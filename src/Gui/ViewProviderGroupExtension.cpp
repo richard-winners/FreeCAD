@@ -32,6 +32,8 @@
 #include "Command.h"
 #include "Application.h"
 #include "Document.h"
+#include "MainWindow.h"
+#include <Base/Tools.h>
 #include <App/Document.h>
 #include <App/DocumentObject.h>
 #include <App/GroupExtension.h>
@@ -43,7 +45,7 @@ using namespace Gui;
 
 EXTENSION_PROPERTY_SOURCE(Gui::ViewProviderGroupExtension, Gui::ViewProviderExtension)
 
-ViewProviderGroupExtension::ViewProviderGroupExtension()  : visible(false)
+ViewProviderGroupExtension::ViewProviderGroupExtension()  : visible(false), guard(false)
 {
     initExtensionType(ViewProviderGroupExtension::getExtensionClassTypeId());
 }
@@ -101,9 +103,32 @@ void ViewProviderGroupExtension::extensionDropObject(App::DocumentObject* obj) {
     QString cmd;
     cmd = QString::fromLatin1("App.getDocument(\"%1\").getObject(\"%2\").addObject("
                         "App.getDocument(\"%1\").getObject(\"%3\"))")
-                        .arg(QString::fromLatin1(doc->getName()))
-                        .arg(QString::fromLatin1(grp->getNameInDocument()))
-                        .arg(QString::fromLatin1(obj->getNameInDocument()));
+                        .arg(QString::fromLatin1(doc->getName()),
+                             QString::fromLatin1(grp->getNameInDocument()),
+                             QString::fromLatin1(obj->getNameInDocument()));
+
+    Gui::Command::doCommand(Gui::Command::App, cmd.toUtf8());
+}
+
+void ViewProviderGroupExtension::extensionReplaceObject(App::DocumentObject* oldValue, App::DocumentObject* newValue) {
+
+    App::DocumentObject* grp = static_cast<App::DocumentObject*>(getExtendedViewProvider()->getObject());
+    App::Document* doc = grp->getDocument();
+
+    // build Python command for execution
+    QString cmd;
+    cmd = QString::fromLatin1("App.getDocument(\"%1\").getObject(\"%2\").removeObject("
+                        "App.getDocument(\"%1\").getObject(\"%3\"))")
+                        .arg(QString::fromLatin1(doc->getName()),
+                             QString::fromLatin1(grp->getNameInDocument()),
+                             QString::fromLatin1(oldValue->getNameInDocument()));
+
+    Gui::Command::doCommand(Gui::Command::App, cmd.toUtf8());
+    cmd = QString::fromLatin1("App.getDocument(\"%1\").getObject(\"%2\").addObject("
+                        "App.getDocument(\"%1\").getObject(\"%3\"))")
+                        .arg(QString::fromLatin1(doc->getName()),
+                             QString::fromLatin1(grp->getNameInDocument()),
+                             QString::fromLatin1(newValue->getNameInDocument()));
 
     Gui::Command::doCommand(Gui::Command::App, cmd.toUtf8());
 }
@@ -115,6 +140,11 @@ std::vector< App::DocumentObject* > ViewProviderGroupExtension::extensionClaimCh
 }
 
 void ViewProviderGroupExtension::extensionShow(void) {
+
+    // avoid possible infinite recursion
+    if (guard)
+        return;
+    Base::StateLocker lock(guard);
 
     // when reading the Visibility property from file then do not hide the
     // objects of this group because they have stored their visibility status, too
@@ -135,6 +165,11 @@ void ViewProviderGroupExtension::extensionShow(void) {
 }
 
 void ViewProviderGroupExtension::extensionHide(void) {
+
+    // avoid possible infinite recursion
+    if (guard)
+        return;
+    Base::StateLocker lock(guard);
 
     // when reading the Visibility property from file then do not hide the
     // objects of this group because they have stored their visibility status, too
@@ -163,17 +198,18 @@ bool ViewProviderGroupExtension::extensionOnDelete(const std::vector< std::strin
 
     auto* group = getExtendedViewProvider()->getObject()->getExtensionByType<App::GroupExtension>();
     // If the group is nonempty ask the user if he wants to delete its content
-    if ( group->Group.getSize () ) {
+    if (group->Group.getSize() > 0) {
         QMessageBox::StandardButton choice = 
-            QMessageBox::question ( 0, QObject::tr ( "Delete group content?" ), 
+            QMessageBox::question(getMainWindow(), QObject::tr ( "Delete group content?" ),
                 QObject::tr ( "The %1 is not empty, delete its content as well?")
                     .arg ( QString::fromUtf8 ( getExtendedViewProvider()->getObject()->Label.getValue () ) ), 
                 QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes );
 
-        if ( choice == QMessageBox::Yes ) {
+        if (choice == QMessageBox::Yes) {
             Gui::Command::doCommand(Gui::Command::Doc,
                     "App.getDocument(\"%s\").getObject(\"%s\").removeObjectsFromDocument()"
-                    ,getExtendedViewProvider()->getObject()->getDocument()->getName(), getExtendedViewProvider()->getObject()->getNameInDocument());
+                    , getExtendedViewProvider()->getObject()->getDocument()->getName()
+                    , getExtendedViewProvider()->getObject()->getNameInDocument());
         }
     }
     return true;

@@ -82,14 +82,22 @@ App::DocumentObjectExecReturn *Boolean::execute(void)
         // Now, let's get the TopoDS_Shape
         TopoDS_Shape BaseShape = base->Shape.getValue();
         if (BaseShape.IsNull())
-            throw Base::Exception("Base shape is null");
+            throw NullShapeException("Base shape is null");
         TopoDS_Shape ToolShape = tool->Shape.getValue();
         if (ToolShape.IsNull())
-            throw Base::Exception("Tool shape is null");
+            throw NullShapeException("Tool shape is null");
 
         std::unique_ptr<BRepAlgoAPI_BooleanOperation> mkBool(makeOperation(BaseShape, ToolShape));
         if (!mkBool->IsDone()) {
-            return new App::DocumentObjectExecReturn("Boolean operation failed");
+            std::stringstream error;
+            error << "Boolean operation failed";
+            if (BaseShape.ShapeType() != TopAbs_SOLID) {
+                error << std::endl << base->Label.getValue() << " is not a solid";
+            }
+            if (ToolShape.ShapeType() != TopAbs_SOLID) {
+                error << std::endl << tool->Label.getValue() << " is not a solid";
+            }
+            return new App::DocumentObjectExecReturn(error.str());
         }
         TopoDS_Shape resShape = mkBool->Shape();
         if (resShape.IsNull()) {
@@ -118,7 +126,7 @@ App::DocumentObjectExecReturn *Boolean::execute(void)
                 history[0] = joinHistory(history[0], hist);
                 history[1] = joinHistory(history[1], hist);
             }
-            catch (Standard_Failure) {
+            catch (Standard_Failure&) {
                 // do nothing
             }
         }

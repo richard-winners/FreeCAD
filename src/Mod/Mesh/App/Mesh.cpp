@@ -458,6 +458,7 @@ void MeshObject::swapKernel(MeshCore::MeshKernel& kernel,
         }
     }
 
+#if 0
 #ifndef FC_DEBUG
     try {
         MeshCore::MeshEvalNeighbourhood nb(_kernel);
@@ -476,6 +477,7 @@ void MeshObject::swapKernel(MeshCore::MeshKernel& kernel,
         // ignore memory exceptions and continue
         Base::Console().Log("Check for defects in mesh data structure failed\n");
     }
+#endif
 #endif
 }
 
@@ -1126,6 +1128,21 @@ void MeshObject::refine()
     this->_segments.clear();
 }
 
+void MeshObject::removeNeedles(float length)
+{
+    unsigned long count = _kernel.CountFacets();
+    MeshCore::MeshRemoveNeedles eval(_kernel, length);
+    eval.Fixup();
+    if (_kernel.CountFacets() < count)
+        this->_segments.clear();
+}
+
+void MeshObject::validateCaps(float fMaxAngle, float fSplitFactor)
+{
+    MeshCore::MeshFixCaps eval(_kernel, fMaxAngle, fSplitFactor);
+    eval.Fixup();
+}
+
 void MeshObject::optimizeTopology(float fMaxAngle)
 {
     MeshCore::MeshTopoAlgorithm topalg(_kernel);
@@ -1374,6 +1391,15 @@ void MeshObject::removeInvalidPoints()
     deletePoints(nan.GetIndices());
 }
 
+void MeshObject::mergeFacets()
+{
+    unsigned long count = _kernel.CountFacets();
+    MeshCore::MeshFixMergeFacets merge(_kernel);
+    merge.Fixup();
+    if (_kernel.CountFacets() < count)
+        this->_segments.clear();
+}
+
 void MeshObject::validateIndices()
 {
     unsigned long count = _kernel.CountFacets();
@@ -1409,8 +1435,8 @@ void MeshObject::validateDeformations(float fMaxAngle, float fEps)
 {
     unsigned long count = _kernel.CountFacets();
     MeshCore::MeshFixDeformedFacets eval(_kernel,
-                                         Base::toRadians(30.0f),
-                                         Base::toRadians(120.0f),
+                                         Base::toRadians(15.0f),
+                                         Base::toRadians(150.0f),
                                          fMaxAngle, fEps);
     eval.Fixup();
     if (_kernel.CountFacets() < count)
@@ -1697,8 +1723,8 @@ MeshObject* MeshObject::meshFromSegment(const std::vector<unsigned long>& indice
     return new MeshObject(kernel, _Mtrx);
 }
 
-std::vector<Segment> MeshObject::getSegmentsFromType(MeshObject::GeometryType type,
-                                                     float dev, unsigned long minFacets) const
+std::vector<Segment> MeshObject::getSegmentsOfType(MeshObject::GeometryType type,
+                                                   float dev, unsigned long minFacets) const
 {
     std::vector<Segment> segm;
     if (this->_kernel.CountFacets() == 0)
@@ -1708,12 +1734,17 @@ std::vector<Segment> MeshObject::getSegmentsFromType(MeshObject::GeometryType ty
     std::unique_ptr<MeshCore::MeshDistanceSurfaceSegment> surf;
     switch (type) {
     case PLANE:
-        surf.reset(new MeshCore::MeshDistancePlanarSegment(this->_kernel, minFacets, dev));
-        break;
-    // todo!
+        //surf.reset(new MeshCore::MeshDistancePlanarSegment(this->_kernel, minFacets, dev));
+        surf.reset(new MeshCore::MeshDistanceGenericSurfaceFitSegment(new MeshCore::PlaneSurfaceFit,
+                   this->_kernel, minFacets, dev));
+    break;
     case CYLINDER:
+        surf.reset(new MeshCore::MeshDistanceGenericSurfaceFitSegment(new MeshCore::CylinderSurfaceFit,
+                   this->_kernel, minFacets, dev));
         break;
     case SPHERE:
+        surf.reset(new MeshCore::MeshDistanceGenericSurfaceFitSegment(new MeshCore::SphereSurfaceFit,
+                   this->_kernel, minFacets, dev));
         break;
     default:
         break;

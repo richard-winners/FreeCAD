@@ -23,7 +23,7 @@
 #ifndef _DrawView_h_
 #define _DrawView_h_
 
-#include <boost/signals.hpp>
+#include <boost/signals2.hpp>
 
 #include <QRectF>
 
@@ -36,6 +36,7 @@ namespace TechDraw
 {
 
 class DrawPage;
+class DrawViewClip;
 
 /** Base class of all View Features in the drawing module
  */
@@ -67,6 +68,7 @@ public:
     void Restore(Base::XMLReader &reader) override;
 
     bool isInClip();
+    DrawViewClip* getClipGroup(void);
 
     /// returns the type name of the ViewProvider
     virtual const char* getViewProviderName(void) const override {
@@ -76,22 +78,20 @@ public:
     virtual PyObject *getPyObject(void) override;
 
     DrawPage* findParentPage() const;
-    bool allowAutoPos() {return autoPos;}                //sb in DPGI??
-    void setAutoPos(bool state) {autoPos = state;}       //autopos is obsolete
-    bool isMouseMove() {return mouseMove;}
-    void setMouseMove(bool state) {mouseMove = state;}
     virtual QRectF getRect() const;                      //must be overridden by derived class
     virtual double autoScale(double w, double h) const;
     virtual bool checkFit(DrawPage*) const;
     virtual void setPosition(double x, double y);
     bool keepUpdated(void);
-    boost::signal<void (const DrawView*)> signalGuiPaint;
+    boost::signals2::signal<void (const DrawView*)> signalGuiPaint;
     virtual double getScale(void) const;
     void checkScale(void);
     void requestPaint(void);
+    virtual void handleXYLock(void);
+    virtual bool isLocked(void) const;
 
 protected:
-    void onChanged(const App::Property* prop) override;
+    virtual void onChanged(const App::Property* prop) override;
     std::string pageFeatName;
     bool autoPos;
     bool mouseMove;

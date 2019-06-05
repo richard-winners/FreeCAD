@@ -229,6 +229,7 @@ inline void SketcherAddWorkbenchConstraints<Gui::MenuItem>(Gui::MenuItem& cons){
             << "Sketcher_ConstrainDistanceY"
             << "Sketcher_ConstrainDistance"
             << "Sketcher_ConstrainRadius"
+            << "Sketcher_ConstrainDiameter"
             << "Sketcher_ConstrainAngle"
             << "Sketcher_ConstrainSnellsLaw"
             << "Sketcher_ConstrainInternalAlignment"
@@ -253,7 +254,7 @@ inline void SketcherAddWorkbenchConstraints<Gui::ToolBarItem>(Gui::ToolBarItem& 
             << "Sketcher_ConstrainDistanceX"
             << "Sketcher_ConstrainDistanceY"
             << "Sketcher_ConstrainDistance"
-            << "Sketcher_ConstrainRadius"
+            << "Sketcher_CompConstrainRadDia"
             << "Sketcher_ConstrainAngle"
             << "Sketcher_ConstrainSnellsLaw"
             << "Separator"
@@ -265,7 +266,8 @@ inline void SketcherAddWorkbenchTools(T& consaccel);
 
 template <>
 inline void SketcherAddWorkbenchTools<Gui::MenuItem>(Gui::MenuItem& consaccel){
-    consaccel   << "Sketcher_CloseShape"
+    consaccel   << "Sketcher_SelectElementsWithDoFs"
+                << "Sketcher_CloseShape"
                 << "Sketcher_ConnectLines"
                 << "Sketcher_SelectConstraints"
                 << "Sketcher_SelectOrigin"
@@ -278,19 +280,21 @@ inline void SketcherAddWorkbenchTools<Gui::MenuItem>(Gui::MenuItem& consaccel){
                 << "Sketcher_Symmetry"
                 << "Sketcher_Clone"
                 << "Sketcher_Copy"
+                << "Sketcher_Move"
                 << "Sketcher_RectangularArray"
-                << "Sketcher_DeleteAllGeometry";
+                << "Sketcher_DeleteAllGeometry"
+                << "Sketcher_DeleteAllConstraints";
 }
 template <>
 inline void SketcherAddWorkbenchTools<Gui::ToolBarItem>(Gui::ToolBarItem& consaccel){
-    consaccel << "Sketcher_CloseShape"
-        << "Sketcher_ConnectLines"
-        << "Sketcher_SelectConstraints"
-        << "Sketcher_SelectElementsAssociatedWithConstraints"
-        << "Sketcher_RestoreInternalAlignmentGeometry"
-        << "Sketcher_Symmetry"
-        << "Sketcher_CompCopy"
-        << "Sketcher_RectangularArray";
+    consaccel   << "Sketcher_CloseShape"
+                << "Sketcher_ConnectLines"
+                << "Sketcher_SelectConstraints"
+                << "Sketcher_SelectElementsAssociatedWithConstraints"
+                << "Sketcher_RestoreInternalAlignmentGeometry"
+                << "Sketcher_Symmetry"
+                << "Sketcher_CompCopy"
+                << "Sketcher_RectangularArray";
 }
 
 template <typename T>
@@ -347,6 +351,7 @@ inline void Sketcher_addWorkbenchSketchActions(T& sketch){
             << "Sketcher_EditSketch"
             << "Sketcher_LeaveSketch"
             << "Sketcher_ViewSketch"
+            << "Sketcher_ViewSection"
             << "Sketcher_MapSketch";
     SketcherAddWorkspaceSketchExtra( sketch );
 }

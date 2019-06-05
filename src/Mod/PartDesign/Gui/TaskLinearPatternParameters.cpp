@@ -25,6 +25,7 @@
 
 #ifndef _PreComp_
 # include <QMessageBox>
+# include <QAction>
 # include <QTimer>
 #endif
 
@@ -109,8 +110,10 @@ void TaskLinearPatternParameters::setupUI()
 {
     connect(ui->buttonAddFeature, SIGNAL(toggled(bool)), this, SLOT(onButtonAddFeature(bool)));
     connect(ui->buttonRemoveFeature, SIGNAL(toggled(bool)), this, SLOT(onButtonRemoveFeature(bool)));
+
     // Create context menu
     QAction* action = new QAction(tr("Remove"), this);
+    action->setShortcut(QString::fromLatin1("Del"));
     ui->listWidgetFeatures->addAction(action);
     connect(action, SIGNAL(triggered()), this, SLOT(onFeatureDeleted()));
     ui->listWidgetFeatures->setContextMenuPolicy(Qt::ActionsContextMenu);
@@ -256,7 +259,10 @@ void TaskLinearPatternParameters::onSelectionChanged(const Gui::SelectionChanges
 
                 // Note: ReferenceSelection has already checked the selection for validity
                 if (selObj && (selectionMode == reference ||
-                               selObj->isDerivedFrom(App::Line::getClassTypeId()))) {
+                               selObj->isDerivedFrom(App::Line::getClassTypeId()) ||
+                               selObj->isDerivedFrom(Part::Feature::getClassTypeId()) ||
+                               selObj->isDerivedFrom(PartDesign::Line::getClassTypeId()) ||
+                               selObj->isDerivedFrom(PartDesign::Plane::getClassTypeId()))) {
                     pcLinearPattern->Direction.setValue(selObj, directions);
 
                     recomputeFeature();

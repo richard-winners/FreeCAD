@@ -25,10 +25,12 @@
         <file>icons/TechDraw_ProjTop.svg</file>
         <file>icons/TechDraw_Dimension.svg</file>
         <file>icons/TechDraw_Dimension_Angle.svg</file>
+        <file>icons/TechDraw_Dimension_Angle3Pt.svg</file>
         <file>icons/TechDraw_Dimension_Diameter.svg</file>
         <file>icons/TechDraw_Dimension_Horizontal.svg</file>
         <file>icons/TechDraw_Dimension_Length.svg</file>
         <file>icons/TechDraw_Dimension_Radius.svg</file>
+        <file>icons/TechDraw_Balloon.svg</file>
         <file>icons/TechDraw_Dimension_Vertical.svg</file>
         <file>icons/TechDraw_Dimension_Link.svg</file>
         <file>icons/preferences-techdraw.svg</file>
@@ -49,6 +51,7 @@
         <file>icons/actions/techdraw-draft-view.svg</file>
         <file>icons/actions/techdraw-arch-view.svg</file>
         <file>icons/actions/techdraw-saveSVG.svg</file>
+        <file>icons/actions/techdraw-saveDXF.svg</file>
         <file>icons/actions/techdraw-viewsection.svg</file>
         <file>icons/actions/techdraw-hatch.svg</file>
         <file>icons/actions/techdraw-geomhatch.svg</file>
@@ -67,6 +70,7 @@
         <file>icons/arrow-down.svg</file>
         <file>icons/arrow-ccw.svg</file>
         <file>icons/arrow-cw.svg</file>
+        <file>icons/techdraw-lock.png</file>
         <file>translations/TechDraw_af.qm</file>
         <file>translations/TechDraw_zh-CN.qm</file>
         <file>translations/TechDraw_zh-TW.qm</file>
@@ -102,5 +106,7 @@
         <file>translations/TechDraw_id.qm</file>
         <file>translations/TechDraw_lt.qm</file>
         <file>translations/TechDraw_val-ES.qm</file>
+        <file>translations/TechDraw_ar.qm</file>
+        <file>translations/TechDraw_vi.qm</file>
     </qresource>
 </RCC>

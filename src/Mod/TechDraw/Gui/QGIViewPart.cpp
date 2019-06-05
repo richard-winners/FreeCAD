@@ -40,11 +40,13 @@
 #include <QSvgRenderer>
 #endif // #ifndef _PreComp_
 
+#include <chrono>
 #include <App/Application.h>
 #include <App/Document.h>
 #include <App/DocumentObject.h>
 #include <App/Material.h>
 #include <Base/Console.h>
+#include <Base/Parameter.h>
 #include <Base/Vector3D.h>
 #include <Gui/ViewProvider.h>
 
@@ -54,6 +56,7 @@
 #include <Mod/TechDraw/App/DrawHatch.h>
 #include <Mod/TechDraw/App/DrawGeomHatch.h>
 #include <Mod/TechDraw/App/DrawViewDetail.h>
+#include <Mod/TechDraw/App/DrawProjGroupItem.h>
 
 #include "Rez.h"
 #include "ZVALUE.h"
@@ -72,6 +75,7 @@
 #include "ViewProviderGeomHatch.h"
 #include "ViewProviderHatch.h"
 #include "ViewProviderViewPart.h"
+#include "MDIViewPage.h"
 
 using namespace TechDrawGui;
 using namespace TechDrawGeometry;
@@ -99,20 +103,7 @@ QGIViewPart::~QGIViewPart()
 QVariant QGIViewPart::itemChange(GraphicsItemChange change, const QVariant &value)
 {
     if (change == ItemSelectedHasChanged && scene()) {
-        QList<QGraphicsItem*> items = childItems();
-        for(QList<QGraphicsItem*>::iterator it = items.begin(); it != items.end(); ++it) {
-            //Highlight the children if this is highlighted!?  seems to mess up Face selection?
-            QGIEdge *edge = dynamic_cast<QGIEdge *>(*it);
-            QGIVertex *vert = dynamic_cast<QGIVertex *>(*it);
-            QGIFace *face = dynamic_cast<QGIFace *>(*it);
-            if(edge) {
-                //edge->setHighlighted(isSelected());
-            } else if(vert){
-                //vert->setHighlighted(isSelected());
-            } else if(face){
-                //face->setHighlighted(isSelected());
-            }
-        }
+        //There's nothing special for QGIVP to do when selection changes!
     } else if(change == ItemSceneChange && scene()) {
            tidy();
     }
@@ -134,9 +125,7 @@ void QGIViewPart::setViewPartFeature(TechDraw::DrawViewPart *obj)
     if (!obj)
         return;
 
-    // called from QGVPage
     setViewFeature(static_cast<TechDraw::DrawView *>(obj));
-    draw();
 }
 
 QPainterPath QGIViewPart::drawPainterPath(TechDrawGeometry::BaseGeom *baseGeom) const
@@ -305,6 +294,7 @@ QPainterPath QGIViewPart::geomToPainterPath(TechDrawGeometry::BaseGeom *baseGeom
 
 void QGIViewPart::updateView(bool update)
 {
+    auto start = std::chrono::high_resolution_clock::now();
     auto viewPart( dynamic_cast<TechDraw::DrawViewPart *>(getViewObject()) );
     if( viewPart == nullptr ) {
         return;
@@ -316,37 +306,14 @@ void QGIViewPart::updateView(bool update)
 
     QGIView::updateView(update);
 
-    if (update ||
-        viewPart->isTouched() ||
-        viewPart->Source.isTouched() ||
-        viewPart->Direction.isTouched() ||
-        viewPart->Rotation.isTouched() ||
-        viewPart->Scale.isTouched() ||
-        viewPart->HardHidden.isTouched() ||
-        viewPart->SmoothVisible.isTouched() ||
-        viewPart->SeamVisible.isTouched()   ||
-        viewPart->IsoVisible.isTouched()    ||
-        viewPart->SmoothHidden.isTouched()    ||
-        viewPart->SeamHidden.isTouched()      ||
-        viewPart->IsoHidden.isTouched()       ||
-        viewPart->IsoCount.isTouched()  ) {
+    if (update ) {
         draw();
-    } else if (update ||
-              vp->LineWidth.isTouched() ||
-              vp->HiddenWidth.isTouched()) {
-        QList<QGraphicsItem*> items = childItems();
-        for(QList<QGraphicsItem*>::iterator it = items.begin(); it != items.end(); ++it) {
-            QGIEdge *edge = dynamic_cast<QGIEdge *>(*it);
-            if(edge && edge->getHiddenEdge()) {
-                edge->setWidth(vp->HiddenWidth.getValue() * lineScaleFactor);
-            } else if (edge){
-                edge->setWidth(vp->LineWidth.getValue() * lineScaleFactor);
-            }
-        }
-        draw();
-    } else {
-        QGIView::draw();
     }
+
+    auto end   = std::chrono::high_resolution_clock::now();
+    auto diff  = end - start;
+    double diffOut = std::chrono::duration <double, std::milli> (diff).count();
+    Base::Console().Log("TIMING - QGIVP::updateView - %s - total %.3f millisecs\n",getViewName(),diffOut);
 }
 
 void QGIViewPart::draw() {
@@ -355,7 +322,6 @@ void QGIViewPart::draw() {
     QGIView::draw();
     drawCenterLines(true);   //have to draw centerlines after border to get size correct.
     drawAllSectionLines();   //same for section lines
-
 }
 
 void QGIViewPart::drawViewPart()
@@ -491,6 +457,11 @@ void QGIViewPart::drawViewPart()
     Base::Reference<ParameterGrp> hGrp = App::GetApplication().GetUserParameter().GetGroup("BaseApp")->
                                          GetGroup("Preferences")->GetGroup("Mod/TechDraw/General");
     double vertexScaleFactor = hGrp->GetFloat("VertexScale", 3.0);
+    hGrp = App::GetApplication().GetUserParameter().GetGroup("BaseApp")->
+                                         GetGroup("Preferences")->GetGroup("Mod/TechDraw/Decorations");
+    App::Color fcColor;
+    fcColor.setPackedValue(hGrp->GetUnsigned("VertexColor", 0x00000000));
+    QColor vertexColor = fcColor.asValue<QColor>();
 
     bool usePolygonHLR = viewPart->CoarseView.getValue();
     const std::vector<TechDrawGeometry::Vertex *> &verts = viewPart->getVertexGeometry();
@@ -509,6 +480,8 @@ void QGIViewPart::drawViewPart()
             }
         } else if(!usePolygonHLR){ //Disable dots WHEN usePolygonHLR
             QGIVertex *item = new QGIVertex(i);
+            item->setNormalColor(vertexColor);
+            item->setPrettyNormal();
             addToGroup(item);
             item->setPos(Rez::guiX((*vert)->pnt.x), Rez::guiX((*vert)->pnt.y));
             item->setRadius(lineWidth * vertexScaleFactor);
@@ -557,9 +530,14 @@ QGIFace* QGIViewPart::drawFace(TechDrawGeometry::Face* f, int idx)
 }
 
 //! Remove all existing QGIPrimPath items(Vertex,Edge,Face)
+//note this triggers scene selectionChanged signal if vertex/edge/face is selected
 void QGIViewPart::removePrimitives()
 {
     QList<QGraphicsItem*> children = childItems();
+    MDIViewPage* mdi = getMDIViewPage();
+    if (mdi != nullptr) {
+        getMDIViewPage()->blockSelection(true);
+    }
     for (auto& c:children) {
          QGIPrimPath* prim = dynamic_cast<QGIPrimPath*>(c);
          if (prim) {
@@ -568,6 +546,9 @@ void QGIViewPart::removePrimitives()
             delete prim;
          }
      }
+    if (mdi != nullptr) {
+        getMDIViewPage()->blockSelection(false);
+    }
 }
 
 //! Remove all existing QGIDecoration items(SectionLine,SectionMark,...)
@@ -759,16 +740,24 @@ void QGIViewPart::drawHighlight(TechDraw::DrawViewDetail* viewDetail, bool b)
         addToGroup(highlight);
         highlight->setPos(0.0,0.0);   //sb setPos(center.x,center.y)?
         highlight->setReference(const_cast<char*>(viewDetail->Reference.getValue()));
+
         Base::Vector3d center = viewDetail->AnchorPoint.getValue() * viewPart->getScale();
+
         double radius = viewDetail->Radius.getValue() * viewPart->getScale();
         highlight->setBounds(center.x - radius, center.y + radius,center.x + radius, center.y - radius);
         highlight->setWidth(Rez::guiX(vp->IsoWidth.getValue()));
         highlight->setFont(m_font, fontSize);
         highlight->setZValue(ZVALUE::HIGHLIGHT);
+
+        QPointF rotCenter = highlight->mapFromParent(transformOriginPoint());
+        highlight->setTransformOriginPoint(rotCenter);
+
+        double rotation = viewPart->Rotation.getValue() + 
+                          vp->HighlightAdjust.getValue();
+        highlight->setRotation(rotation);
         highlight->draw();
     }
 }
-
 
 void QGIViewPart::drawMatting()
 {
@@ -1001,7 +990,9 @@ void QGIViewPart::dumpPath(const char* text,QPainterPath path)
 
 QRectF QGIViewPart::boundingRect() const
 {
-    return childrenBoundingRect();
+//    return childrenBoundingRect();
+//    return customChildrenBoundingRect();
+    return QGIView::boundingRect();
 }
 
 //QGIViewPart derived classes do not need a rotate view method as rotation is handled on App side.

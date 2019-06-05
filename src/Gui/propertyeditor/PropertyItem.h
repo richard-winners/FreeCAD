@@ -135,6 +135,7 @@ public:
     void setParent(PropertyItem* parent);
     PropertyItem *parent() const;
     void appendChild(PropertyItem *child);
+    void insertChild(int, PropertyItem *child);
     void removeChildren(int from, int to);
     PropertyItem *takeChild(int);
 
@@ -374,7 +375,7 @@ protected:
  * Change a floating point number.
  * \author Werner Mayer
  */
-class GuiExport PropertyAngleItem : public PropertyFloatItem
+class GuiExport PropertyAngleItem : public PropertyUnitConstraintItem
 {
     Q_OBJECT
     PROPERTYITEM_HEADER

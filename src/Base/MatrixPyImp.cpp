@@ -387,6 +387,16 @@ PyObject* MatrixPy::multiply(PyObject * args)
     return 0;
 }
 
+PyObject* MatrixPy::multVec(PyObject * args)
+{
+    PyObject *obj;
+    if (!PyArg_ParseTuple(args, "O!", &(VectorPy::Type), &obj))
+        return NULL;
+    Base::Vector3d vec(static_cast<VectorPy*>(obj)->value());
+    getMatrixPtr()->multVec(vec, vec);
+    return new VectorPy(new Vector3d(vec));
+}
+
 PyObject* MatrixPy::invert(PyObject * args)
 {
     if (!PyArg_ParseTuple(args, ""))
@@ -752,13 +762,11 @@ int MatrixPy::setCustomAttributes(const char* /*attr*/, PyObject* /*obj*/)
     return 0; 
 }
 
-#if PY_MAJOR_VERSION < 3
 PyObject * MatrixPy::number_divide_handler (PyObject* /*self*/, PyObject* /*other*/)
 {
     PyErr_SetString(PyExc_NotImplementedError, "Not implemented");
     return 0;
 }
-#endif
 
 PyObject * MatrixPy::number_remainder_handler (PyObject* /*self*/, PyObject* /*other*/)
 {

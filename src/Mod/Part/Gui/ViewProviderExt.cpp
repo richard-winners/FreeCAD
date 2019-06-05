@@ -68,7 +68,7 @@
 # include <TShort_Array1OfShortReal.hxx>
 # include <TShort_HArray1OfShortReal.hxx>
 # include <Precision.hxx>
-
+# include <Python.h>
 # include <Inventor/SoPickedPoint.h>
 # include <Inventor/details/SoFaceDetail.h>
 # include <Inventor/details/SoLineDetail.h>
@@ -240,6 +240,12 @@ ViewProviderPartExt::ViewProviderPartExt()
     ParameterGrp::handle hPart = App::GetApplication().GetParameterGroupByPath
         ("User parameter:BaseApp/Preferences/Mod/Part");
     NormalsFromUV = hPart->GetBool("NormalsFromUVNodes", NormalsFromUV);
+
+    // Let the user define a custom lower limit but a value less than
+    // OCCT's epsilon is not allowed
+    double lowerLimit = hPart->GetFloat("MinimumDeviation", tessRange.LowerBound);
+    lowerLimit = std::max(lowerLimit, Precision::Confusion());
+    tessRange.LowerBound = lowerLimit;
 
     App::Material mat;
     mat.ambientColor.set(0.2f,0.2f,0.2f);
@@ -481,6 +487,7 @@ void ViewProviderPartExt::attach(App::DocumentObject *pcFeat)
 
     // wireframe node
     SoSeparator* wireframe = new SoSeparator();
+    wireframe->setName("Edge");
     wireframe->addChild(pcLineBind);
     wireframe->addChild(pcLineMaterial);
     wireframe->addChild(pcLineStyle);

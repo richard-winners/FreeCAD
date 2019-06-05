@@ -86,6 +86,7 @@
 #include <Base/FileInfo.h>
 #include <Base/Parameter.h>
 #include <Mod/Part/App/PartFeature.h>
+#include <Mod/Part/App/TopoShape.h>
 
 #include "DrawUtil.h"
 #include "DrawViewSection.h"
@@ -96,6 +97,7 @@
 #include "DrawHatch.h"
 #include "DrawGeomHatch.h"
 #include "DrawViewDimension.h"
+#include "DrawViewBalloon.h"
 #include "DrawViewDetail.h"
 #include "DrawPage.h"
 #include "EdgeWalker.h"
@@ -128,7 +130,8 @@ DrawViewPart::DrawViewPart(void) : geometryObject(0)
     //properties that affect Geometry
     ADD_PROPERTY_TYPE(Source ,(0),group,App::Prop_None,"3D Shape to view");
     Source.setScope(App::LinkScope::Global);
-    ADD_PROPERTY_TYPE(Direction ,(0,0,1.0)    ,group,App::Prop_None,"Projection direction. The direction you are looking from.");
+    ADD_PROPERTY_TYPE(Direction ,(0.0,-1.0,0.0),
+                      group,App::Prop_None,"Projection direction. The direction you are looking from.");
     ADD_PROPERTY_TYPE(Perspective ,(false),group,App::Prop_None,"Perspective(true) or Orthographic(false) projection");
     ADD_PROPERTY_TYPE(Focus,(defDist),group,App::Prop_None,"Perspective view focus distance");
 
@@ -159,7 +162,14 @@ TopoDS_Shape DrawViewPart::getSourceShape(void) const
     TopoDS_Shape result;
     const std::vector<App::DocumentObject*>& links = Source.getValues();
     if (links.empty())  {
-        Base::Console().Log("DVP::getSourceShape - No Sources - creation? - %s\n",getNameInDocument());
+        bool isRestoring = getDocument()->testStatus(App::Document::Status::Restoring);
+        if (isRestoring) {
+            Base::Console().Warning("DVP::getSourceShape - No Sources (but document is restoring) - %s\n",
+                                getNameInDocument());
+        } else {
+            Base::Console().Error("Error: DVP::getSourceShape - No Source(s) linked. - %s\n",
+                                  getNameInDocument());
+        }
     } else {
         std::vector<TopoDS_Shape> sourceShapes;
         for (auto& l:links) {
@@ -180,8 +190,11 @@ TopoDS_Shape DrawViewPart::getSourceShape(void) const
             TopoDS_Shape shape = BuilderCopy.Shape();
             builder.Add(comp, shape);
         }
-        //it appears that an empty compound is !IsNull(), so we need to check if we added anything to the compound.
-        if (found) {
+        //it appears that an empty compound is !IsNull(), so we need to check a different way 
+        //if we added anything to the compound.
+        if (!found) {
+            Base::Console().Error("DVP::getSourceShapes - source shape is empty!\n");
+        } else {
             result = comp;
         }
     }
@@ -192,9 +205,14 @@ std::vector<TopoDS_Shape> DrawViewPart::getShapesFromObject(App::DocumentObject*
 {
     std::vector<TopoDS_Shape> result;
     App::GroupExtension* gex = dynamic_cast<App::GroupExtension*>(docObj);
+    App::Property* gProp = docObj->getPropertyByName("Group");
+    App::Property* sProp = docObj->getPropertyByName("Shape");
     if (docObj->getTypeId().isDerivedFrom(Part::Feature::getClassTypeId())) {
-        result.push_back(static_cast<Part::Feature*>(docObj)->Shape.getShape().getShape());
-    } else if (gex != nullptr) {
+        Part::Feature* pf = static_cast<Part::Feature*>(docObj);
+        Part::TopoShape ts = pf->Shape.getShape();
+        ts.setPlacement(pf->globalPlacement());
+        result.push_back(ts.getShape());
+    } else if (gex != nullptr) {           //is a group extension
         std::vector<App::DocumentObject*> objs = gex->Group.getValues();
         std::vector<TopoDS_Shape> shapes;
         for (auto& d: objs) {
@@ -202,6 +220,29 @@ std::vector<TopoDS_Shape> DrawViewPart::getShapesFromObject(App::DocumentObject*
             if (!shapes.empty()) {
                 result.insert(result.end(),shapes.begin(),shapes.end());
             }
+        }
+    //the next 2 bits are mostly for Arch module objects
+    } else if (gProp != nullptr) {       //has a Group property
+        App::PropertyLinkList* list = dynamic_cast<App::PropertyLinkList*>(gProp);
+        if (list != nullptr) {
+            std::vector<App::DocumentObject*> objs = list->getValues();
+            std::vector<TopoDS_Shape> shapes;
+            for (auto& d: objs) {
+                shapes = getShapesFromObject(d);
+                if (!shapes.empty()) {
+                    result.insert(result.end(),shapes.begin(),shapes.end());
+                }
+            }
+        } else {
+                Base::Console().Log("DVP::getShapesFromObject - Group is not a PropertyLinkList!\n");
+        }
+    } else if (sProp != nullptr) {       //has a Shape property
+        Part::PropertyPartShape* shape = dynamic_cast<Part::PropertyPartShape*>(sProp);
+        if (shape != nullptr) {
+            TopoDS_Shape occShape = shape->getValue();
+            result.push_back(occShape);
+        } else {
+            Base::Console().Log("DVP::getShapesFromObject - Shape is not a PropertyPartShape!\n");
         }
     }
     return result;
@@ -219,7 +260,7 @@ TopoDS_Shape DrawViewPart::getSourceShapeFused(void) const
             BRepAlgoAPI_Fuse mkFuse(fusedShape, aChild);
             // Let's check if the fusion has been successful
             if (!mkFuse.IsDone()) {
-                Base::Console().Error("DVp - Fusion failed\n");
+                Base::Console().Error("DVp - Fusion failed - %s\n",getNameInDocument());
                 return baseShape;
             }
             fusedShape = mkFuse.Shape();
@@ -234,31 +275,54 @@ App::DocumentObjectExecReturn *DrawViewPart::execute(void)
     if (!keepUpdated()) {
         return App::DocumentObject::StdReturn;
     }
+    App::Document* doc = getDocument();
+    bool isRestoring = doc->testStatus(App::Document::Status::Restoring);
+    const std::vector<App::DocumentObject*>& links = Source.getValues();
+    if (links.empty())  {
+        if (isRestoring) {
+            Base::Console().Warning("DVP::execute - No Sources (but document is restoring) - %s\n",
+                                getNameInDocument());
+        } else {
+            Base::Console().Error("Error: DVP::execute - No Source(s) linked. - %s\n",
+                                  getNameInDocument());
+        }
+        return App::DocumentObject::StdReturn;
+    }
 
-    TopoDS_Shape shape = getSourceShape();
+    TopoDS_Shape shape = getSourceShape();          //if shape is null, it is probably(?) obj creation time.
     if (shape.IsNull()) {
-        return new App::DocumentObjectExecReturn("DVP - Linked shape object is invalid");
+        if (isRestoring) {
+            Base::Console().Warning("DVP::execute - source shape is invalid - (but document is restoring) - %s\n",
+                                getNameInDocument());
+        } else {
+            Base::Console().Error("Error: DVP::execute - Source shape is Null. - %s\n",
+                                  getNameInDocument());
+        }
+        return App::DocumentObject::StdReturn;
     }
 
     gp_Pnt inputCenter;
+    Base::Vector3d stdOrg(0.0,0.0,0.0);
+    
     inputCenter = TechDrawGeometry::findCentroid(shape,
-                                                 Direction.getValue());
+                                                 getViewAxis(stdOrg,Direction.getValue()));
+                                                 
     shapeCentroid = Base::Vector3d(inputCenter.X(),inputCenter.Y(),inputCenter.Z());
-
     TopoDS_Shape mirroredShape;
     mirroredShape = TechDrawGeometry::mirrorShape(shape,
                                                   inputCenter,
                                                   getScale());
 
-     gp_Ax2 viewAxis = getViewAxis(shapeCentroid,Direction.getValue());
-     if (!DrawUtil::fpCompare(Rotation.getValue(),0.0)) {
+    gp_Ax2 viewAxis = getViewAxis(shapeCentroid,Direction.getValue());
+    if (!DrawUtil::fpCompare(Rotation.getValue(),0.0)) {
         mirroredShape = TechDrawGeometry::rotateShape(mirroredShape,
                                                       viewAxis,
                                                       Rotation.getValue());
      }
-     geometryObject =  buildGeometryObject(mirroredShape,viewAxis);
+    geometryObject =  buildGeometryObject(mirroredShape,viewAxis);
 
 #if MOD_TECHDRAW_HANDLE_FACES
+    auto start = chrono::high_resolution_clock::now();
     if (handleFaces() && !geometryObject->usePolygonHLR()) {
         try {
             extractFaces();
@@ -268,6 +332,12 @@ App::DocumentObjectExecReturn *DrawViewPart::execute(void)
             return new App::DocumentObjectExecReturn(e4.GetMessageString());
         }
     }
+    auto end   = chrono::high_resolution_clock::now();
+    auto diff  = end - start;
+    double diffOut = chrono::duration <double, milli> (diff).count();
+    Base::Console().Log("TIMING - %s DVP spent: %.3f millisecs handling Faces\n",
+                        getNameInDocument(),diffOut);
+
 #endif //#if MOD_TECHDRAW_HANDLE_FACES
 
     requestPaint();
@@ -284,6 +354,7 @@ short DrawViewPart::mustExecute() const
                     ScaleType.isTouched() ||
                     Perspective.isTouched() ||
                     Focus.isTouched() ||
+                    Rotation.isTouched() ||
                     SmoothVisible.isTouched() ||
                     SeamVisible.isTouched() ||
                     IsoVisible.isTouched() ||
@@ -328,6 +399,9 @@ TechDrawGeometry::GeometryObject* DrawViewPart::buildGeometryObject(TopoDS_Shape
         go->projectShape(shape,
             viewAxis);
     }
+
+    auto start = chrono::high_resolution_clock::now();
+
     go->extractGeometry(TechDrawGeometry::ecHARD,                   //always show the hard&outline visible lines
                         true);
     go->extractGeometry(TechDrawGeometry::ecOUTLINE,
@@ -362,6 +436,11 @@ TechDrawGeometry::GeometryObject* DrawViewPart::buildGeometryObject(TopoDS_Shape
         go->extractGeometry(TechDrawGeometry::ecUVISO,
                             false);
     }
+    auto end   = chrono::high_resolution_clock::now();
+    auto diff  = end - start;
+    double diffOut = chrono::duration <double, milli> (diff).count();
+    Base::Console().Log("TIMING - %s DVP spent: %.3f millisecs in GO::extractGeometry\n",getNameInDocument(),diffOut);
+
     bbox = go->calcBoundingBox();
     return go;
 }
@@ -468,7 +547,7 @@ void DrawViewPart::extractFaces()
     ew.loadEdges(newEdges);
     bool success = ew.perform();
     if (!success) {
-        Base::Console().Warning("DVP::extractFaces - input is not planar graph. No face detection\n");
+        Base::Console().Warning("DVP::extractFaces - %s -Can't make faces from projected edges\n", getNameInDocument());
         return;
     }
     std::vector<TopoDS_Wire> fw = ew.getResultNoDups();
@@ -528,6 +607,20 @@ std::vector<TechDraw::DrawViewDimension*> DrawViewPart::getDimensions() const
     return result;
 }
 
+std::vector<TechDraw::DrawViewBalloon*> DrawViewPart::getBalloons() const
+{
+    std::vector<TechDraw::DrawViewBalloon*> result;
+    std::vector<App::DocumentObject*> children = getInList();
+    std::sort(children.begin(),children.end(),std::less<App::DocumentObject*>());
+    std::vector<App::DocumentObject*>::iterator newEnd = std::unique(children.begin(),children.end());
+    for (std::vector<App::DocumentObject*>::iterator it = children.begin(); it != newEnd; ++it) {
+        if ((*it)->getTypeId().isDerivedFrom(DrawViewBalloon::getClassTypeId())) {
+            TechDraw::DrawViewBalloon* balloon = dynamic_cast<TechDraw::DrawViewBalloon*>(*it);
+            result.push_back(balloon);
+        }
+    }
+    return result;
+}
 
 const std::vector<TechDrawGeometry::Vertex *> & DrawViewPart::getVertexGeometry() const
 {
@@ -686,8 +779,9 @@ gp_Ax2 DrawViewPart::getViewAxis(const Base::Vector3d& pt,
                                  const Base::Vector3d& axis,
                                  const bool flip)  const
 {
-     gp_Ax2 viewAxis = TechDrawGeometry::getViewAxis(pt,axis,flip);
-     return viewAxis;
+    gp_Ax2 viewAxis = TechDrawGeometry::getViewAxis(pt,axis,flip);
+     
+    return viewAxis;
 }
 
 void DrawViewPart::saveParamSpace(const Base::Vector3d& direction, const Base::Vector3d& xAxis)
@@ -805,8 +899,35 @@ void DrawViewPart::unsetupObject()
         }
     }
 
+    // Remove Balloons which reference this DVP
+    // must use page->removeObject first
+    page = findParentPage();
+    if (page != nullptr) {
+        std::vector<TechDraw::DrawViewBalloon*> balloons = getBalloons();
+        std::vector<TechDraw::DrawViewBalloon*>::iterator it3 = balloons.begin();
+        for (; it3 != balloons.end(); it3++) {
+            page->removeView(*it3);
+            const char* name = (*it3)->getNameInDocument();
+            if (name) {
+                Base::Interpreter().runStringArg("App.getDocument(\"%s\").removeObject(\"%s\")",
+                                                docName.c_str(), name);
+            }
+        }
+    }
+
 }
 
+//! is this an Isometric projection?
+bool DrawViewPart::isIso(void) const
+{
+    bool result = false;
+    Base::Vector3d dir = Direction.getValue();
+    if ( DrawUtil::fpCompare(fabs(dir.x),fabs(dir.y))  &&
+         DrawUtil::fpCompare(fabs(dir.x),fabs(dir.z)) ) {
+        result = true;
+    }
+    return result;
+}
 
 PyObject *DrawViewPart::getPyObject(void)
 {

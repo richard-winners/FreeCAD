@@ -173,7 +173,7 @@ public:
      */
     virtual void* Produce () const
     {
-        return (void*)(new CLASS);
+        return (new CLASS);
     }
 };
 
@@ -212,7 +212,7 @@ public:
      */
     virtual void* Produce () const
     {
-        return (void*)(new CLASS);
+        return (new CLASS);
     }
 };
 
@@ -295,7 +295,7 @@ public:
      */
     virtual void* Produce () const
     {
-        return (void*)(new CLASS);
+        return (new CLASS);
     }
 };
 
@@ -421,7 +421,7 @@ public:
     Py::Object connect(const Py::Tuple&);
 
 private:
-    std::vector<class SignalConnect*> mySingals;
+    std::vector<class SignalConnect*> mySignals;
     QDialog* myDlg;
 };
 

@@ -110,15 +110,24 @@ CmdPartShapeFromMesh::CmdPartShapeFromMesh()
     sToolTipText  = QT_TR_NOOP("Create shape from selected mesh object");
     sWhatsThis    = "Part_ShapeFromMesh";
     sStatusTip    = sToolTipText;
-    sPixmap       = "Part_Shape_from_Mesh.svg";
+    sPixmap       = "Part_Shape_from_Mesh";
 }
 
 void CmdPartShapeFromMesh::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
+
+    double STD_OCC_TOLERANCE = 1e-6;
+
+    ParameterGrp::handle hGrp = App::GetApplication().GetParameterGroupByPath("User parameter:BaseApp/Preferences/Units");
+    int decimals = hGrp->GetInt("Decimals");
+    double tolerance_from_decimals = pow(10., -decimals);
+
+    double minimal_tolerance = tolerance_from_decimals < STD_OCC_TOLERANCE ? STD_OCC_TOLERANCE : tolerance_from_decimals;
+
     bool ok;
     double tol = QInputDialog::getDouble(Gui::getMainWindow(), QObject::tr("Sewing Tolerance"),
-        QObject::tr("Enter tolerance for sewing shape:"), 0.1, 0.01,10.0,2,&ok);
+        QObject::tr("Enter tolerance for sewing shape:"), 0.1, minimal_tolerance, 10.0, decimals, &ok);
     if (!ok)
         return;
     Base::Type meshid = Base::Type::fromName("Mesh::Feature");
@@ -174,6 +183,7 @@ CmdPartSimpleCopy::CmdPartSimpleCopy()
     sToolTipText  = QT_TR_NOOP("Create a simple non-parametric copy");
     sWhatsThis    = "Part_SimpleCopy";
     sStatusTip    = sToolTipText;
+    sPixmap       = "Tree_Part";
 }
 
 void CmdPartSimpleCopy::activated(int iMsg)
@@ -258,6 +268,95 @@ bool CmdPartRefineShape::isActive(void)
     return Gui::Selection().countObjectsOfType(partid) > 0;
 }
 
+//===========================================================================
+// Part_Defeaturing
+//===========================================================================
+DEF_STD_CMD_A(CmdPartDefeaturing);
+
+CmdPartDefeaturing::CmdPartDefeaturing()
+  : Command("Part_Defeaturing")
+{
+    sAppModule    = "Part";
+    sGroup        = QT_TR_NOOP("Part");
+    sMenuText     = QT_TR_NOOP("Defeaturing");
+    sToolTipText  = QT_TR_NOOP("Remove feature from a shape");
+    sWhatsThis    = "Part_Defeaturing";
+    sStatusTip    = sToolTipText;
+    sPixmap       = "Part_Defeaturing";
+}
+
+void CmdPartDefeaturing::activated(int iMsg)
+{
+    Q_UNUSED(iMsg);
+    Gui::WaitCursor wc;
+    Base::Type partid = Base::Type::fromName("Part::Feature");
+    std::vector<Gui::SelectionObject> objs = Gui::Selection().getSelectionEx(0, partid);
+    openCommand("Defeaturing");
+    for (std::vector<Gui::SelectionObject>::iterator it = objs.begin(); it != objs.end(); ++it) {
+        try {
+            std::string shape;
+            shape.append("sh=App.");
+            shape.append(it->getDocName());
+            shape.append(".");
+            shape.append(it->getFeatName());
+            shape.append(".Shape\n");
+
+            std::string faces;
+            std::vector<std::string> subnames = it->getSubNames();
+            for (std::vector<std::string>::iterator sub = subnames.begin(); sub != subnames.end(); ++sub) {
+                faces.append("sh.");
+                faces.append(*sub);
+                faces.append(",");
+            }
+
+            doCommand(Doc,"\nsh = App.getDocument('%s').%s.Shape\n"
+                          "nsh = sh.defeaturing([%s])\n"
+                          "if not sh.isPartner(nsh):\n"
+                          "\t\tdefeat = App.ActiveDocument.addObject('Part::Feature','Defeatured').Shape = nsh\n"
+                          "\t\tGui.ActiveDocument.%s.hide()\n"
+                          "else:\n"
+                          "\t\tFreeCAD.Console.PrintError('Defeaturing failed\\n')",
+                          it->getDocName(),
+                          it->getFeatName(),
+                          faces.c_str(),
+                          it->getFeatName());
+        }
+        catch (const Base::Exception& e) {
+            Base::Console().Warning("%s: %s\n", it->getFeatName(), e.what());
+        }
+    }
+    commitCommand();
+    updateActive();
+}
+
+bool CmdPartDefeaturing::isActive(void)
+{
+    Base::Type partid = Base::Type::fromName("Part::Feature");
+    std::vector<Gui::SelectionObject> objs = Gui::Selection().getSelectionEx(0, partid);
+    for (std::vector<Gui::SelectionObject>::iterator it = objs.begin(); it != objs.end(); ++it) {
+        std::vector<std::string> subnames = it->getSubNames();
+        for (std::vector<std::string>::iterator sub = subnames.begin(); sub != subnames.end(); ++sub) {
+            if (sub->substr(0,4) == "Face") {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+
+// {
+//     if (getActiveGuiDocument())
+// #if OCC_VERSION_HEX < 0x060900
+//         return false;
+// #else
+//         return true;
+// #endif
+//     else
+//         return false;
+// }
+
+
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 void CreateSimplePartCommands(void)
@@ -267,4 +366,5 @@ void CreateSimplePartCommands(void)
     rcCmdMgr.addCommand(new CmdPartShapeFromMesh());
     rcCmdMgr.addCommand(new CmdPartSimpleCopy());
     rcCmdMgr.addCommand(new CmdPartRefineShape());
+    rcCmdMgr.addCommand(new CmdPartDefeaturing());
 }

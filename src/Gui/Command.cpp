@@ -135,7 +135,7 @@ CommandBase::CommandBase( const char* sMenu, const char* sToolTip, const char* s
 
 CommandBase::~CommandBase()
 {
-    //Note: The Action object becomes a children of MainWindow which gets destoyed _before_ the
+    //Note: The Action object becomes a children of MainWindow which gets destroyed _before_ the
     //command manager hence before any command object. So the action pointer is a dangling pointer
     //at this state.
 }
@@ -412,9 +412,9 @@ void Command::setGroupName(const char* s)
 //--------------------------------------------------------------------------
 /** Open a new Undo transaction on the active document
  *  This method opens a new UNDO transaction on the active document. This transaction
- *  will later apear in the UNDO REDO dialog with the name of the command. If the user
+ *  will later appear in the UNDO REDO dialog with the name of the command. If the user
  *  recall the transaction everything changed on the document between OpenCommand() and
- *  CommitCommand will be undone (or redone). You can use an alternetive name for the
+ *  CommitCommand will be undone (or redone). You can use an alternative name for the
  *  operation default is the Command name.
  *  @see CommitCommand(),AbortCommand()
  */
@@ -431,16 +431,19 @@ void Command::openCommand(const char* sCmdName)
 
 void Command::commitCommand(void)
 {
+    assert(Gui::Application::Instance->activeDocument());
     Gui::Application::Instance->activeDocument()->commitCommand();
 }
 
 void Command::abortCommand(void)
 {
+    assert(Gui::Application::Instance->activeDocument());
     Gui::Application::Instance->activeDocument()->abortCommand();
 }
 
 bool Command::hasPendingCommand(void)
 {
+    assert(Gui::Application::Instance->activeDocument());
     return Gui::Application::Instance->activeDocument()->hasPendingCommand();
 }
 
@@ -622,12 +625,12 @@ void Command::applyCommandData(const char* context, Action* action)
     if (!accel.isEmpty()) {
         // show shortcut inside tooltip
         QString ttip = QString::fromLatin1("%1 (%2)")
-            .arg(action->toolTip()).arg(accel);
+            .arg(action->toolTip(), accel);
         action->setToolTip(ttip);
 
         // show shortcut inside status tip
         QString stip = QString::fromLatin1("(%1)\t%2")
-            .arg(accel).arg(action->statusTip());
+            .arg(accel, action->statusTip());
         action->setStatusTip(stip);
     }
 }
@@ -736,6 +739,8 @@ MacroCommand::~MacroCommand()
 {
     free(const_cast<char*>(sName));
     sName = 0;
+    free(const_cast<char*>(sScriptName));
+    sScriptName = 0;
 }
 
 void MacroCommand::activated(int iMsg)
@@ -789,12 +794,12 @@ Action * MacroCommand::createAction(void)
     if (!accel.isEmpty()) {
         // show shortcut inside tooltip
         QString ttip = QString::fromLatin1("%1 (%2)")
-            .arg(pcAction->toolTip()).arg(accel);
+            .arg(pcAction->toolTip(), accel);
         pcAction->setToolTip(ttip);
 
         // show shortcut inside status tip
         QString stip = QString::fromLatin1("(%1)\t%2")
-            .arg(accel).arg(pcAction->statusTip());
+            .arg(accel, pcAction->statusTip());
         pcAction->setStatusTip(stip);
     }
 

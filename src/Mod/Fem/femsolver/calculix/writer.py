@@ -1,7 +1,6 @@
 # ***************************************************************************
-# *                                                                         *
-# *   Copyright (c) 2015 - Przemo Firszt <przemo@firszt.eu>                 *
-# *   Copyright (c) 2015 - Bernd Hahnebach <bernd@bimstatik.org>            *
+# *   Copyright (c) 2015 Przemo Firszt <przemo@firszt.eu>                   *
+# *   Copyright (c) 2015 Bernd Hahnebach <bernd@bimstatik.org>              *
 # *                                                                         *
 # *   This program is free software; you can redistribute it and/or modify  *
 # *   it under the terms of the GNU Lesser General Public License (LGPL)    *
@@ -21,7 +20,7 @@
 # *                                                                         *
 # ***************************************************************************
 
-__title__ = "CalculiX Writer"
+__title__ = "FreeCAD FEM solver CalculiX writer"
 __author__ = "Przemo Firszt, Bernd Hahnebach"
 __url__ = "http://www.freecadweb.org"
 
@@ -32,40 +31,68 @@ import FreeCAD
 import os
 import sys
 import time
+import codecs
 import femmesh.meshtools as FemMeshTools
 from .. import writerbase as FemInputWriter
 import six
 
 
 class FemInputWriterCcx(FemInputWriter.FemInputWriter):
-    def __init__(self,
-                 analysis_obj, solver_obj,
-                 mesh_obj, matlin_obj, matnonlin_obj,
-                 fixed_obj, displacement_obj,
-                 contact_obj, planerotation_obj, transform_obj,
-                 selfweight_obj, force_obj, pressure_obj,
-                 temperature_obj, heatflux_obj, initialtemperature_obj,
-                 beamsection_obj, beamrotation_obj, shellthickness_obj, fluidsection_obj,
-                 dir_name=None
-                 ):
-
+    def __init__(
+        self,
+        analysis_obj,
+        solver_obj,
+        mesh_obj,
+        matlin_obj,
+        matnonlin_obj,
+        fixed_obj,
+        displacement_obj,
+        contact_obj,
+        planerotation_obj,
+        transform_obj,
+        selfweight_obj,
+        force_obj,
+        pressure_obj,
+        temperature_obj,
+        heatflux_obj,
+        initialtemperature_obj,
+        beamsection_obj,
+        beamrotation_obj,
+        shellthickness_obj,
+        fluidsection_obj,
+        dir_name=None
+    ):
         FemInputWriter.FemInputWriter.__init__(
             self,
-            analysis_obj, solver_obj,
-            mesh_obj, matlin_obj, matnonlin_obj,
-            fixed_obj, displacement_obj,
-            contact_obj, planerotation_obj, transform_obj,
-            selfweight_obj, force_obj, pressure_obj,
-            temperature_obj, heatflux_obj, initialtemperature_obj,
-            beamsection_obj, beamrotation_obj, shellthickness_obj, fluidsection_obj,
-            dir_name)
-        # self.dir_name does have a slash at the end
+            analysis_obj,
+            solver_obj,
+            mesh_obj,
+            matlin_obj,
+            matnonlin_obj,
+            fixed_obj,
+            displacement_obj,
+            contact_obj,
+            planerotation_obj,
+            transform_obj,
+            selfweight_obj,
+            force_obj,
+            pressure_obj,
+            temperature_obj,
+            heatflux_obj,
+            initialtemperature_obj,
+            beamsection_obj,
+            beamrotation_obj,
+            shellthickness_obj,
+            fluidsection_obj,
+            dir_name
+        )
+        from os.path import join
         self.main_file_name = self.mesh_object.Name + '.inp'
-        self.file_name = self.dir_name + self.main_file_name
+        self.file_name = join(self.dir_name, self.main_file_name)
         self.FluidInletoutlet_ele = []
-        self.fluid_inout_nodes_file = self.dir_name + self.mesh_object.Name + '_inout_nodes.txt'
-        FreeCAD.Console.PrintMessage('FemInputWriterCcx --> self.dir_name  -->  ' + self.dir_name + '\n')
-        FreeCAD.Console.PrintMessage('FemInputWriterCcx --> self.main_file_name  -->  ' + self.main_file_name + '\n')
+        self.fluid_inout_nodes_file = join(self.dir_name, (self.mesh_object.Name + '_inout_nodes.txt'))
+        FreeCAD.Console.PrintLog('FemInputWriterCcx --> self.dir_name  -->  ' + self.dir_name + '\n')
+        FreeCAD.Console.PrintLog('FemInputWriterCcx --> self.main_file_name  -->  ' + self.main_file_name + '\n')
         FreeCAD.Console.PrintMessage('FemInputWriterCcx --> self.file_name  -->  ' + self.file_name + '\n')
 
     def write_calculix_input_file(self):
@@ -74,14 +101,20 @@ class FemInputWriterCcx(FemInputWriter.FemInputWriter):
             self.write_calculix_splitted_input_file()
         else:
             self.write_calculix_one_input_file()
-        FreeCAD.Console.PrintMessage("Writing time input file: " + str(time.clock() - timestart) + ' \n\n')
-        return self.file_name
+        writing_time_string = "Writing time input file: " + str(round((time.clock() - timestart), 2)) + " seconds"
+        if self.femelement_count_test is True:
+            FreeCAD.Console.PrintMessage(writing_time_string + ' \n\n')
+            return self.file_name
+        else:
+            FreeCAD.Console.PrintMessage(writing_time_string + ' \n')
+            FreeCAD.Console.PrintError("Problems on writing input file, check report prints.\n\n")
+            return ""
 
     def write_calculix_one_input_file(self):
         self.femmesh.writeABAQUS(self.file_name, 1, False)
 
         # reopen file with "append" and add the analysis definition
-        inpfile = open(self.file_name, 'a')
+        inpfile = codecs.open(self.file_name, 'a', encoding="utf-8")
         inpfile.write('\n\n')
 
         # Check to see if fluid sections are in analysis and use D network element type
@@ -134,7 +167,7 @@ class FemInputWriterCcx(FemInputWriter.FemInputWriter):
             self.write_constraints_displacement(inpfile)
 
         # constraints depend on step and depending on analysis type
-        if self.analysis_type == "frequency":
+        if self.analysis_type == "frequency" or self.analysis_type == "check":
             pass
         elif self.analysis_type == "static":
             if self.selfweight_objects:
@@ -281,7 +314,7 @@ class FemInputWriterCcx(FemInputWriter.FemInputWriter):
             self.write_constraints_displacement(inpfileMain)
 
         # constraints depend on step and depending on analysis type
-        if self.analysis_type == "frequency":
+        if self.analysis_type == "frequency" or self.analysis_type == "check":
             pass
         elif self.analysis_type == "static":
             if self.selfweight_objects:
@@ -396,7 +429,7 @@ class FemInputWriterCcx(FemInputWriter.FemInputWriter):
             elif len(self.fluidsection_objects) > 1:
                 self.get_ccx_elsets_multiple_mat_multiple_fluid()
 
-        # TODO: some elemetIDs are collected for 1D-Flow calculation,
+        # TODO: some elementIDs are collected for 1D-Flow calculation,
         # this should be a def somewhere else, preferable inside the get_ccx_elsets_... methods
         for ccx_elset in self.ccx_elsets:
             if ccx_elset['ccx_elset'] and not isinstance(ccx_elset['ccx_elset'], six.string_types):  # use six to be sure to be Python 2.7 and 3.x compatible
@@ -710,7 +743,7 @@ class FemInputWriterCcx(FemInputWriter.FemInputWriter):
             if self.analysis_type == 'static' or self.analysis_type == 'thermomech':
                 step += ', NLGEOM'   # https://www.comsol.com/blogs/what-is-geometric-nonlinearity/
             elif self.analysis_type == 'frequency':
-                FreeCAD.Console.PrintMessage('Analysis type frequency and geometrical nonlinear analyis are not allowed together, linear is used instead!\n')
+                FreeCAD.Console.PrintMessage('Analysis type frequency and geometrical nonlinear analysis are not allowed together, linear is used instead!\n')
         if self.solver_obj.IterationsThermoMechMaximum:
             if self.analysis_type == 'thermomech':
                 step += ', INC=' + str(self.solver_obj.IterationsThermoMechMaximum)
@@ -719,7 +752,7 @@ class FemInputWriterCcx(FemInputWriter.FemInputWriter):
         # write step line
         f.write(step + '\n')
         # CONTROLS line
-        # all analyis types, ... really in frequency too?!?
+        # all analysis types, ... really in frequency too?!?
         if self.solver_obj.IterationsControlParameterTimeUse:
             f.write('*CONTROLS, PARAMETERS=TIME INCREMENTATION\n')
             f.write(self.solver_obj.IterationsControlParameterIter + '\n')
@@ -732,6 +765,8 @@ class FemInputWriterCcx(FemInputWriter.FemInputWriter):
             analysis_type = '*FREQUENCY'
         elif self.analysis_type == 'thermomech':
             analysis_type = '*COUPLED TEMPERATURE-DISPLACEMENT'
+        elif self.analysis_type == 'check':
+            analysis_type = '*NO ANALYSIS'
         # analysis line --> solver type
         if self.solver_obj.MatrixSolverType == "default":
             pass
@@ -759,7 +794,7 @@ class FemInputWriterCcx(FemInputWriter.FemInputWriter):
                 pass  # not supported for static and frequency!
         # ANALYSIS parameter line
         analysis_parameter = ''
-        if self.analysis_type == 'static':
+        if self.analysis_type == 'static' or self.analysis_type == 'check':
             if self.solver_obj.IterationsUserDefinedIncrementations is True or self.solver_obj.IterationsUserDefinedTimeStepLength is True:
                 analysis_parameter = '{},{}'.format(self.solver_obj.TimeInitialStep, self.solver_obj.TimeEnd)
         elif self.analysis_type == 'frequency':
@@ -989,7 +1024,8 @@ class FemInputWriterCcx(FemInputWriter.FemInputWriter):
                             v = self.mesh_object.FemMesh.getccxVolumesByFace(ho)
                             f.write("** Heat flux on face {}\n".format(elem))
                             for i in v:
-                                f.write("{},F{},{},{}\n".format(i[0], i[1], heatflux_obj.AmbientTemp, heatflux_obj.FilmCoef * 0.001))  # SvdW add factor to force heatflux to units system of t/mm/s/K # OvG: Only write out the VolumeIDs linked to a particular face
+                                # SvdW: add factor to force heatflux to units system of t/mm/s/K # OvG: Only write out the VolumeIDs linked to a particular face
+                                f.write("{},F{},{},{}\n".format(i[0], i[1], heatflux_obj.AmbientTemp, heatflux_obj.FilmCoef * 0.001))
             elif heatflux_obj.ConstraintType == "DFlux":
                 f.write('*DFLUX\n')
                 for o, elem_tup in heatflux_obj.References:
@@ -1032,7 +1068,8 @@ class FemInputWriterCcx(FemInputWriter.FemInputWriter):
                             for line in lines:
                                 b = line.split(',')
                                 if int(b[0]) == n and b[3] == 'PIPE INLET\n':
-                                    f.write(b[1] + ',1,1,' + str(fluidsection_obj.InletFlowRate * 0.001) + '\n')  # degree of freedom 1 is for defining flow rate, factor applied to convert unit from kg/s to t/s
+                                    # degree of freedom 1 is for defining flow rate, factor applied to convert unit from kg/s to t/s
+                                    f.write(b[1] + ',1,1,' + str(fluidsection_obj.InletFlowRate * 0.001) + '\n')
                 elif fluidsection_obj.LiquidSectionType == 'PIPE OUTLET':
                     f.write('**Fluid Section Outlet \n')
                     if fluidsection_obj.OutletPressureActive is True:
@@ -1048,7 +1085,8 @@ class FemInputWriterCcx(FemInputWriter.FemInputWriter):
                             for line in lines:
                                 b = line.split(',')
                                 if int(b[0]) == n and b[3] == 'PIPE OUTLET\n':
-                                    f.write(b[1] + ',1,1,' + str(fluidsection_obj.OutletFlowRate * 0.001) + '\n')  # degree of freedom 1 is for defining flow rate, factor applied to convert unit from kg/s to t/s
+                                    # degree of freedom 1 is for defining flow rate, factor applied to convert unit from kg/s to t/s
+                                    f.write(b[1] + ',1,1,' + str(fluidsection_obj.OutletFlowRate * 0.001) + '\n')
 
     def write_outputs_types(self, f):
         f.write('\n***********************************************************\n')
@@ -1074,11 +1112,13 @@ class FemInputWriterCcx(FemInputWriter.FemInputWriter):
                 f.write('S, E, PEEQ\n')
             else:
                 f.write('S, E\n')
-            f.write('** outputs --> dat file\n')
-            f.write('*NODE PRINT , NSET=' + self.ccx_nall + '\n')
-            f.write('U \n')
-            f.write('*EL PRINT , ELSET=' + self.ccx_eall + '\n')
-            f.write('S \n')
+            # there is no need to write all integration point results as long as there is no reader for this
+            # see https://forum.freecadweb.org/viewtopic.php?f=18&t=29060
+            # f.write('** outputs --> dat file\n')
+            # f.write('*NODE PRINT , NSET=' + self.ccx_nall + '\n')
+            # f.write('U \n')
+            # f.write('*EL PRINT , ELSET=' + self.ccx_eall + '\n')
+            # f.write('S \n')
 
     def write_step_end(self, f):
         f.write('\n***********************************************************\n')

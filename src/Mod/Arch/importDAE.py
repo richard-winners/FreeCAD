@@ -42,6 +42,12 @@ __url__ = "http://www.freecadweb.org"
 
 DEBUG = True
 
+try:
+    # Python 2 forward compatibility
+    range = xrange
+except NameError:
+    pass
+
 def checkCollada():
     "checks if collada if available"
     global collada
@@ -176,7 +182,10 @@ def export(exportList,filename,tessellation=1):
     colmesh.assetInfo.upaxis = collada.asset.UP_AXIS.Z_UP
     # authoring info
     cont = collada.asset.Contributor()
-    author = FreeCAD.ActiveDocument.CreatedBy.encode("utf8")
+    try:
+        author = FreeCAD.ActiveDocument.CreatedBy
+    except UnicodeEncodeError:
+        author = FreeCAD.ActiveDocument.CreatedBy.encode("utf8")
     author = author.replace("<","")
     author = author.replace(">","")
     cont.author = author
@@ -197,29 +206,37 @@ def export(exportList,filename,tessellation=1):
         m = None
         if obj.isDerivedFrom("Part::Feature"):
             print("exporting object ",obj.Name, obj.Shape)
-            m = Mesh.Mesh(triangulate(obj.Shape))
+            new_shape = obj.Shape.copy()
+            new_shape.Placement = obj.getGlobalPlacement()
+            m = Mesh.Mesh(triangulate(new_shape))
         elif obj.isDerivedFrom("Mesh::Feature"):
             print("exporting object ",obj.Name, obj.Mesh)
             m = obj.Mesh
+        elif obj.isDerivedFrom("App::Part"):
+            for child in obj.OutList:
+                objectslist.append(child)
+            continue
+        else:
+            continue
         if m:
             Topology = m.Topology
             Facets = m.Facets
 
             # vertex indices
             vindex = numpy.empty(len(Topology[0]) * 3)
-            for i in xrange(len(Topology[0])):
+            for i in range(len(Topology[0])):
                 v = Topology[0][i]
                 vindex[list(range(i*3, i*3+3))] = (v.x*scale,v.y*scale,v.z*scale)
 
             # normals
             nindex = numpy.empty(len(Facets) * 3)
-            for i in xrange(len(Facets)):
+            for i in range(len(Facets)):
                 n = Facets[i].Normal
                 nindex[list(range(i*3, i*3+3))] = (n.x,n.y,n.z)
 
             # face indices
             findex = numpy.empty(len(Topology[1]) * 6, numpy.int64)
-            for i in xrange(len(Topology[1])):
+            for i in range(len(Topology[1])):
                 f = Topology[1][i]
                 findex[list(range(i*6, i*6+6))] = (f[0],i,f[1],i,f[2],i)
 

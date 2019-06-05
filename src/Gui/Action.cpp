@@ -24,7 +24,7 @@
 #include "PreCompiled.h"
 
 #ifndef _PreComp_
-# include <boost/signals.hpp>
+# include <boost/signals2.hpp>
 # include <boost/bind.hpp>
 # include <QAbstractItemView>
 # include <QActionEvent>
@@ -428,7 +428,6 @@ void WorkbenchComboBox::actionEvent ( QActionEvent* e )
             int index = this->findData(data);
             // added a workbench
             if (index < 0 && action->isVisible()) {
-                QString text = action->text();
                 QIcon icon = action->icon();
                 if (icon.isNull())
                     this->addItem(action->text(), data);

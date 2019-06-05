@@ -27,13 +27,13 @@ import FreeCADGui
 # import Path
 # import PathScripts
 # import PathScripts.PathDressupTag as PathDressupTag
+import PathScripts.PathGeom as PathGeom
 import PathScripts.PathGetPoint as PathGetPoint
 import PathScripts.PathDressupHoldingTags as PathDressupTag
 import PathScripts.PathLog as PathLog
+import PathScripts.PathPreferences as PathPreferences
 import PathScripts.PathUtils as PathUtils
 
-from PathScripts.PathGeom import PathGeom
-from PathScripts.PathPreferences import PathPreferences
 from PySide import QtCore, QtGui
 from pivy import coin
 
@@ -394,7 +394,7 @@ class PathDressupTagViewProvider:
         if self.obj.Base.ViewObject:
             self.obj.Base.ViewObject.Visibility = True
         job = PathUtils.findParentJob(self.obj)
-        job.Proxy.addOperation(arg1.Object.Base)
+        job.Proxy.addOperation(arg1.Object.Base, arg1.Object)
         arg1.Object.Base = None
         # if self.debugDisplay():
         #    self.vobj.Debug.removeObjectsFromDocument()
@@ -495,7 +495,7 @@ def Create(baseObject, name='DressupTag'):
     obj = PathDressupTag.Create(baseObject, name)
     vp = PathDressupTagViewProvider(obj.ViewObject)
     FreeCAD.ActiveDocument.commitTransaction()
-    obj.ViewObject.startEditing()
+    obj.ViewObject.Document.setEdit(obj.ViewObject, 0)
     return obj
 
 
@@ -517,7 +517,7 @@ class CommandPathDressupTag:
         # check that the selection contains exactly what we want
         selection = FreeCADGui.Selection.getSelection()
         if len(selection) != 1:
-            PathLog.error(translate('Path_DressupTag', 'Please select one path object\n'))
+            PathLog.error(translate('Path_DressupTag', 'Please select one path object')+'\n')
             return
         baseObject = selection[0]
 

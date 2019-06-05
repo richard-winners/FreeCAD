@@ -25,7 +25,8 @@
 #include "PreCompiled.h"
 
 #ifndef _PreComp_
-#include <boost/signal.hpp>
+#include <boost/signals2.hpp>
+#include <boost/signals2/connection.hpp>
 #include <boost/bind.hpp>
 
 #endif
@@ -65,7 +66,8 @@ ViewProviderDrawingView::ViewProviderDrawingView()
 
     ADD_PROPERTY_TYPE(KeepLabel ,(false),group,App::Prop_None,"Keep Label on Page even if toggled off");
 
-    // Do not show in property editor   why? wf
+    // Do not show in property editor   why? wf  WF: because DisplayMode applies only to coin and we
+    // don't use coin.
     DisplayMode.setStatus(App::Property::ReadOnly,true);
     m_docReady = true;
 }
@@ -242,9 +244,9 @@ void ViewProviderDrawingView::onGuiRepaint(const TechDraw::DrawView* dv)
         if (qgiv) {
             qgiv->updateView(true);
         } else {                                //we are not part of the Gui page yet. ask page to add us.
-            auto page = dv->findParentPage();
+            MDIViewPage* page = getMDIViewPage();
             if (page != nullptr) {
-                page->requestPaint();
+                page->addView(dv);
             }
         }
     }

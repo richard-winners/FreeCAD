@@ -96,7 +96,9 @@
 # include <GCPnts_AbscissaPoint.hxx>
 # include <Precision.hxx>
 # include <GeomAPI_ProjectPointOnCurve.hxx>
+# include <GeomAPI_ExtremaCurveCurve.hxx>
 # include <ShapeConstruct_Curve.hxx>
+# include <LProp_NotDefined.hxx>
 #endif
 
 #include <Base/VectorPy.h>
@@ -134,6 +136,7 @@
 #include <Base/Tools.h>
 
 #include <ctime>
+#include <cmath>
 
 #include "Geometry.h"
 
@@ -370,7 +373,7 @@ GeomBSplineCurve* GeomCurve::toBSpline(double first, double last) const
     Handle(Geom_Curve) c = Handle(Geom_Curve)::DownCast(handle());
     Handle(Geom_BSplineCurve) spline = scc.ConvertToBSpline(c, first, last, Precision::Confusion());
     if (spline.IsNull())
-        throw Base::RuntimeError("Conversion to B-spline failed");
+        THROWM(Base::CADKernelError,"Conversion to B-spline failed")
     return new GeomBSplineCurve(spline);
 }
 
@@ -385,6 +388,19 @@ bool GeomCurve::tangent(double u, gp_Dir& dir) const
     GeomLProp_CLProps prop(c,u,1,Precision::Confusion());
     if (prop.IsTangentDefined()) {
         prop.Tangent(dir);
+        return true;
+    }
+
+    return false;
+}
+
+bool GeomCurve::tangent(double u, Base::Vector3d& dir) const
+{
+    gp_Dir gdir;
+
+    if (tangent(u, gdir)) {
+        dir = Base::Vector3d(gdir.X(),gdir.Y(),gdir.Z());
+
         return true;
     }
 
@@ -435,12 +451,88 @@ bool GeomCurve::normalAt(double u, Base::Vector3d& dir) const
             return true;
         }
     }
+    catch (const LProp_NotDefined&) {
+        dir.Set(0,0,0);
+        return false;
+    }
     catch (Standard_Failure& e) {
-
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 
     return false;
+}
+
+bool GeomCurve::intersect(  GeomCurve * c,
+                            std::vector<std::pair<Base::Vector3d, Base::Vector3d>>& points,
+                            double tol) const
+{
+    Handle(Geom_Curve) curve1 = Handle(Geom_Curve)::DownCast(handle());
+    Handle(Geom_Curve) curve2 = Handle(Geom_Curve)::DownCast(c->handle());
+
+    if(!curve1.IsNull() && !curve2.IsNull()) {
+        return intersect(curve1,curve2,points, tol);
+    }
+    else
+        return false;
+
+}
+
+bool GeomCurve::intersect(const Handle(Geom_Curve) curve1, const Handle(Geom_Curve) curve2,
+                std::vector<std::pair<Base::Vector3d, Base::Vector3d>>& points,
+                double tol)
+{
+    // https://forum.freecadweb.org/viewtopic.php?f=10&t=31700
+    if (curve1->IsKind(STANDARD_TYPE(Geom_BoundedCurve)) &&
+        curve2->IsKind(STANDARD_TYPE(Geom_BoundedCurve))){
+
+        Handle(Geom_BoundedCurve) bcurve1 = Handle(Geom_BoundedCurve)::DownCast(curve1);
+        Handle(Geom_BoundedCurve) bcurve2 = Handle(Geom_BoundedCurve)::DownCast(curve2);
+
+        gp_Pnt c1s = bcurve1->StartPoint();
+        gp_Pnt c2s = bcurve2->StartPoint();
+        gp_Pnt c1e = bcurve1->EndPoint();
+        gp_Pnt c2e = bcurve2->EndPoint();
+
+        auto checkendpoints = [&points,tol]( gp_Pnt p1, gp_Pnt p2) {
+            if(p1.Distance(p2) < tol)
+                points.emplace_back(Base::Vector3d(p1.X(),p1.Y(),p1.Z()),Base::Vector3d(p2.X(),p2.Y(),p2.Z()));
+        };
+
+        checkendpoints(c1s,c2s);
+        checkendpoints(c1s,c2e);
+        checkendpoints(c1e,c2s);
+        checkendpoints(c1e,c2e);
+
+    }
+
+    try {
+
+        GeomAPI_ExtremaCurveCurve intersector(curve1, curve2);
+
+        if (intersector.NbExtrema() == 0 || intersector.LowerDistance() > tol) {
+            // No intersection
+            return false;
+        }
+
+        for (int i = 1; i <= intersector.NbExtrema(); i++) {
+            if (intersector.Distance(i) > tol)
+                continue;
+
+            gp_Pnt p1, p2;
+            intersector.Points(i, p1, p2);
+            points.emplace_back(Base::Vector3d(p1.X(),p1.Y(),p1.Z()),Base::Vector3d(p2.X(),p2.Y(),p2.Z()));
+        }
+    }
+    catch (Standard_Failure& e) {
+        // Yes Extrema finding failed, but if we got an intersection then go on with it
+        if(points.size()>0)
+            return points.size()>0?true:false;
+        else
+            THROWM(Base::CADKernelError,e.GetMessageString())
+    }
+
+
+    return points.size()>0?true:false;
 }
 
 bool GeomCurve::closestParameter(const Base::Vector3d& point, double &u) const
@@ -454,15 +546,29 @@ bool GeomCurve::closestParameter(const Base::Vector3d& point, double &u) const
             return true;
         }
     }
-    catch (Standard_Failure& e) {
+    catch (StdFail_NotDone& e) {
+        if (c->IsKind(STANDARD_TYPE(Geom_BoundedCurve))){
+            Base::Vector3d firstpoint = this->pointAtParameter(c->FirstParameter());
+            Base::Vector3d lastpoint = this->pointAtParameter(c->LastParameter());
 
-        throw Base::RuntimeError(e.GetMessageString());
+            if((firstpoint-point).Length() < (lastpoint-point).Length())
+                u = c->FirstParameter();
+            else
+                u = c->LastParameter();
+        }
+        else
+            THROWM(Base::CADKernelError,e.GetMessageString())
+
+        return true;
+    }
+    catch (Standard_Failure& e) {
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 
     return false;
 }
 
-bool GeomCurve::closestParameterToBasicCurve(const Base::Vector3d& point, double &u) const
+bool GeomCurve::closestParameterToBasisCurve(const Base::Vector3d& point, double &u) const
 {
     Handle(Geom_Curve) c = Handle(Geom_Curve)::DownCast(handle());
 
@@ -478,8 +584,7 @@ bool GeomCurve::closestParameterToBasicCurve(const Base::Vector3d& point, double
             }
         }
         catch (Standard_Failure& e) {
-    
-            throw Base::RuntimeError(e.GetMessageString());
+            THROWM(Base::CADKernelError,e.GetMessageString())
         }
 
         return false;
@@ -499,9 +604,8 @@ double GeomCurve::getFirstParameter() const
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
-
 }
 
 double GeomCurve::getLastParameter() const
@@ -514,7 +618,7 @@ double GeomCurve::getLastParameter() const
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -528,7 +632,7 @@ double GeomCurve::curvatureAt(double u) const
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -543,7 +647,7 @@ double GeomCurve::length(double u, double v) const
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -556,7 +660,7 @@ void GeomCurve::reverse(void)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -741,11 +845,11 @@ void GeomBezierCurve::Restore(Base::XMLReader& reader)
         if (!bezier.IsNull())
             this->myCurve = bezier;
         else
-            throw Base::RuntimeError("BezierCurve restore failed");
+            THROWM(Base::CADKernelError,"BezierCurve restore failed")
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -852,7 +956,7 @@ void GeomBSplineCurve::setPole(int index, const Base::Vector3d& pole, double wei
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -916,7 +1020,7 @@ void GeomBSplineCurve::setWeights(const std::vector<double>& weights)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -930,7 +1034,7 @@ void GeomBSplineCurve::setKnot(int index, const double val, int mult)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -990,7 +1094,7 @@ int GeomBSplineCurve::getMultiplicity(int index) const
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1111,7 +1215,7 @@ void GeomBSplineCurve::increaseDegree(double degree)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1124,7 +1228,7 @@ void GeomBSplineCurve::increaseMultiplicity(int index, int multiplicity)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1136,7 +1240,7 @@ bool GeomBSplineCurve::removeKnot(int index, int multiplicity, double tolerance)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1249,11 +1353,11 @@ void GeomBSplineCurve::Restore(Base::XMLReader& reader)
         if (!spline.IsNull())
             this->myCurve = spline;
         else
-            throw Base::RuntimeError("BSpline restore failed");
+            THROWM(Base::CADKernelError,"BSpline restore failed")
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1293,7 +1397,7 @@ void GeomConic::setLocation(const Base::Vector3d& Center)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1315,7 +1419,7 @@ void GeomConic::setCenter(const Base::Vector3d& Center)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1364,7 +1468,7 @@ void GeomConic::setAngleXU(double angle)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1383,7 +1487,89 @@ bool GeomConic::isReversed() const
 
 // -------------------------------------------------
 
-TYPESYSTEM_SOURCE_ABSTRACT(Part::GeomArcOfConic,Part::GeomCurve)
+TYPESYSTEM_SOURCE(Part::GeomTrimmedCurve,Part::GeomBoundedCurve)
+
+GeomTrimmedCurve::GeomTrimmedCurve()
+{
+}
+
+GeomTrimmedCurve::GeomTrimmedCurve(const Handle(Geom_TrimmedCurve)& c)
+{
+    setHandle(c);
+}
+
+GeomTrimmedCurve::~GeomTrimmedCurve()
+{
+}
+
+void GeomTrimmedCurve::setHandle(const Handle(Geom_TrimmedCurve)& c)
+{
+    this->myCurve = Handle(Geom_TrimmedCurve)::DownCast(c->Copy());
+}
+
+const Handle(Geom_Geometry)& GeomTrimmedCurve::handle() const
+{
+    return myCurve;
+}
+
+Geometry *GeomTrimmedCurve::copy(void) const
+{
+    GeomTrimmedCurve *newCurve =  new GeomTrimmedCurve(myCurve);
+    newCurve->Construction = this->Construction;
+    return newCurve;
+}
+
+// Persistence implementer
+unsigned int GeomTrimmedCurve::getMemSize (void) const               {assert(0); return 0;/* not implemented yet */}
+void         GeomTrimmedCurve::Save       (Base::Writer &/*writer*/) const {assert(0);          /* not implemented yet */}
+void         GeomTrimmedCurve::Restore    (Base::XMLReader &/*reader*/)    {assert(0);          /* not implemented yet */}
+
+PyObject *GeomTrimmedCurve::getPyObject(void)
+{
+    return 0;
+}
+
+bool GeomTrimmedCurve::intersectBasisCurves(  const GeomTrimmedCurve * c,
+                                std::vector<std::pair<Base::Vector3d, Base::Vector3d>>& points,
+                                double tol) const
+{
+    Handle(Geom_TrimmedCurve) curve1 =  Handle(Geom_TrimmedCurve)::DownCast(handle());
+    Handle(Geom_TrimmedCurve) curve2 =  Handle(Geom_TrimmedCurve)::DownCast(c->handle());
+
+    Handle(Geom_Curve) bcurve1 = curve1->BasisCurve();
+    Handle(Geom_Curve) bcurve2 = curve2->BasisCurve();
+
+
+    if(!bcurve1.IsNull() && !bcurve2.IsNull()) {
+
+        return intersect(bcurve1, bcurve2, points, tol);
+    }
+    else
+        return false;
+
+}
+
+void GeomTrimmedCurve::getRange(double& u, double& v) const
+{
+    Handle(Geom_TrimmedCurve) curve =  Handle(Geom_TrimmedCurve)::DownCast(handle());
+    u = curve->FirstParameter();
+    v = curve->LastParameter();
+}
+
+void GeomTrimmedCurve::setRange(double u, double v)
+{
+    try {
+        Handle(Geom_TrimmedCurve) curve =  Handle(Geom_TrimmedCurve)::DownCast(handle());
+
+        curve->SetTrim(u, v);
+    }
+    catch (Standard_Failure& e) {
+        THROWM(Base::CADKernelError,e.GetMessageString())
+    }
+}
+
+// -------------------------------------------------
+TYPESYSTEM_SOURCE_ABSTRACT(Part::GeomArcOfConic,Part::GeomTrimmedCurve)
 
 GeomArcOfConic::GeomArcOfConic()
 {
@@ -1456,7 +1642,7 @@ void GeomArcOfConic::setCenter(const Base::Vector3d& Center)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1471,7 +1657,7 @@ void GeomArcOfConic::setLocation(const Base::Vector3d& Center)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+       THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1533,7 +1719,7 @@ void GeomArcOfConic::setAngleXU(double angle)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1579,7 +1765,7 @@ void GeomArcOfConic::setXAxisDir(const Base::Vector3d& newdir)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1684,7 +1870,7 @@ void GeomCircle::setRadius(double Radius)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1751,13 +1937,13 @@ void GeomCircle::Restore(Base::XMLReader& reader)
     try {
         GC_MakeCircle mc(xdir, Radius);
         if (!mc.IsDone())
-            throw Base::Exception(gce_ErrorStatusText(mc.Status()));
+            THROWM(Base::CADKernelError,gce_ErrorStatusText(mc.Status()))
 
         this->myCurve = mc.Value();
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1836,7 +2022,7 @@ void GeomArcOfCircle::setRadius(double Radius)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1909,7 +2095,7 @@ void GeomArcOfCircle::setRange(double u, double v, bool emulateCCWXY)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -1982,10 +2168,10 @@ void GeomArcOfCircle::Restore(Base::XMLReader &reader)
     try {
         GC_MakeCircle mc(xdir, Radius);
         if (!mc.IsDone())
-            throw Base::Exception(gce_ErrorStatusText(mc.Status()));
+            THROWM(Base::CADKernelError,gce_ErrorStatusText(mc.Status()))
         GC_MakeArcOfCircle ma(mc.Value()->Circ(), StartAngle, EndAngle, 1);
         if (!ma.IsDone())
-            throw Base::Exception(gce_ErrorStatusText(ma.Status()));
+            THROWM(Base::CADKernelError,gce_ErrorStatusText(ma.Status()))
 
         Handle(Geom_TrimmedCurve) tmpcurve = ma.Value();
         Handle(Geom_Circle) tmpcircle = Handle(Geom_Circle)::DownCast(tmpcurve->BasisCurve());
@@ -1996,7 +2182,7 @@ void GeomArcOfCircle::Restore(Base::XMLReader &reader)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2104,7 +2290,7 @@ void GeomEllipse::setMajorRadius(double Radius)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2123,7 +2309,7 @@ void GeomEllipse::setMinorRadius(double Radius)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2161,7 +2347,7 @@ void GeomEllipse::setMajorAxisDir(Base::Vector3d newdir)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2237,13 +2423,13 @@ void GeomEllipse::Restore(Base::XMLReader& reader)
     try {
         GC_MakeEllipse mc(xdir, MajorRadius, MinorRadius);
         if (!mc.IsDone())
-            throw Base::Exception(gce_ErrorStatusText(mc.Status()));
+            THROWM(Base::CADKernelError,gce_ErrorStatusText(mc.Status()))
 
         this->myCurve = mc.Value();
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2319,7 +2505,7 @@ void GeomArcOfEllipse::setMajorRadius(double Radius)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2338,7 +2524,7 @@ void GeomArcOfEllipse::setMinorRadius(double Radius)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2380,7 +2566,7 @@ void GeomArcOfEllipse::setMajorAxisDir(Base::Vector3d newdir)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2427,7 +2613,7 @@ void GeomArcOfEllipse::setRange(double u, double v, bool emulateCCWXY)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2505,11 +2691,11 @@ void GeomArcOfEllipse::Restore(Base::XMLReader &reader)
     try {
         GC_MakeEllipse mc(xdir, MajorRadius, MinorRadius);
         if (!mc.IsDone())
-            throw Base::Exception(gce_ErrorStatusText(mc.Status()));
+            THROWM(Base::CADKernelError,gce_ErrorStatusText(mc.Status()))
 
         GC_MakeArcOfEllipse ma(mc.Value()->Elips(), StartAngle, EndAngle, 1);
         if (!ma.IsDone())
-            throw Base::Exception(gce_ErrorStatusText(ma.Status()));
+            THROWM(Base::CADKernelError,gce_ErrorStatusText(ma.Status()))
 
         Handle(Geom_TrimmedCurve) tmpcurve = ma.Value();
         Handle(Geom_Ellipse) tmpellipse = Handle(Geom_Ellipse)::DownCast(tmpcurve->BasisCurve());
@@ -2520,7 +2706,7 @@ void GeomArcOfEllipse::Restore(Base::XMLReader &reader)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2586,7 +2772,7 @@ void GeomHyperbola::setMajorRadius(double Radius)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2605,7 +2791,7 @@ void GeomHyperbola::setMinorRadius(double Radius)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2675,13 +2861,13 @@ void GeomHyperbola::Restore(Base::XMLReader& reader)
     try {
         GC_MakeHyperbola mc(xdir, MajorRadius, MinorRadius);
         if (!mc.IsDone())
-            throw Base::Exception(gce_ErrorStatusText(mc.Status()));
+            THROWM(Base::CADKernelError,gce_ErrorStatusText(mc.Status()))
 
         this->myCurve = mc.Value();
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2757,7 +2943,7 @@ void GeomArcOfHyperbola::setMajorRadius(double Radius)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2776,7 +2962,7 @@ void GeomArcOfHyperbola::setMinorRadius(double Radius)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2819,7 +3005,7 @@ void GeomArcOfHyperbola::setMajorAxisDir(Base::Vector3d newdir)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2836,7 +3022,7 @@ void GeomArcOfHyperbola::getRange(double& u, double& v, bool emulateCCWXY) const
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 
     u = myCurve->FirstParameter();
@@ -2858,7 +3044,7 @@ void GeomArcOfHyperbola::setRange(double u, double v, bool emulateCCWXY)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -2935,11 +3121,11 @@ void GeomArcOfHyperbola::Restore(Base::XMLReader &reader)
     try {
         GC_MakeHyperbola mc(xdir, MajorRadius, MinorRadius);
         if (!mc.IsDone())
-            throw Base::Exception(gce_ErrorStatusText(mc.Status()));
+            THROWM(Base::CADKernelError,gce_ErrorStatusText(mc.Status()))
 
         GC_MakeArcOfHyperbola ma(mc.Value()->Hypr(), StartAngle, EndAngle, 1);
         if (!ma.IsDone())
-            throw Base::Exception(gce_ErrorStatusText(ma.Status()));
+            THROWM(Base::CADKernelError,gce_ErrorStatusText(ma.Status()))
 
         Handle(Geom_TrimmedCurve) tmpcurve = ma.Value();
         Handle(Geom_Hyperbola) tmphyperbola = Handle(Geom_Hyperbola)::DownCast(tmpcurve->BasisCurve());
@@ -2950,7 +3136,7 @@ void GeomArcOfHyperbola::Restore(Base::XMLReader &reader)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -3016,7 +3202,7 @@ void GeomParabola::setFocal(double length)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -3084,13 +3270,13 @@ void GeomParabola::Restore(Base::XMLReader& reader)
     try {
         gce_MakeParab mc(xdir, Focal);
         if (!mc.IsDone())
-            throw Base::Exception(gce_ErrorStatusText(mc.Status()));
+            THROWM(Base::CADKernelError,gce_ErrorStatusText(mc.Status()))
 
         this->myCurve = new Geom_Parabola(mc.Value());
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -3166,7 +3352,7 @@ void GeomArcOfParabola::setFocal(double length)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -3191,7 +3377,7 @@ void GeomArcOfParabola::getRange(double& u, double& v, bool emulateCCWXY) const
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 
     u = myCurve->FirstParameter();
@@ -3212,7 +3398,7 @@ void GeomArcOfParabola::setRange(double u, double v, bool emulateCCWXY)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -3287,11 +3473,11 @@ void GeomArcOfParabola::Restore(Base::XMLReader &reader)
     try {
         gce_MakeParab mc(xdir, Focal);
         if (!mc.IsDone())
-            throw Base::Exception(gce_ErrorStatusText(mc.Status()));
+            THROWM(Base::CADKernelError,gce_ErrorStatusText(mc.Status()))
 
         GC_MakeArcOfParabola ma(mc.Value(), StartAngle, EndAngle, 1);
         if (!ma.IsDone())
-            throw Base::Exception(gce_ErrorStatusText(ma.Status()));
+            THROWM(Base::CADKernelError,gce_ErrorStatusText(ma.Status()))
 
         Handle(Geom_TrimmedCurve) tmpcurve = ma.Value();
         Handle(Geom_Parabola) tmpparabola = Handle(Geom_Parabola)::DownCast(tmpcurve->BasisCurve());
@@ -3302,7 +3488,7 @@ void GeomArcOfParabola::Restore(Base::XMLReader &reader)
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -3424,7 +3610,7 @@ PyObject *GeomLine::getPyObject(void)
 
 // -------------------------------------------------
 
-TYPESYSTEM_SOURCE(Part::GeomLineSegment,Part::GeomCurve)
+TYPESYSTEM_SOURCE(Part::GeomLineSegment,Part::GeomTrimmedCurve)
 
 GeomLineSegment::GeomLineSegment()
 {
@@ -3492,10 +3678,11 @@ void GeomLineSegment::setPoints(const Base::Vector3d& Start, const Base::Vector3
     try {
         // Create line out of two points
         if (p1.Distance(p2) < gp::Resolution())
-            Standard_Failure::Raise("Both points are equal");
+            THROWM(Base::ValueError,"Both points are equal");
+
         GC_MakeSegment ms(p1, p2);
         if (!ms.IsDone()) {
-            throw Base::Exception(gce_ErrorStatusText(ms.Status()));
+            THROWM(Base::CADKernelError,gce_ErrorStatusText(ms.Status()))
         }
 
         // get Geom_Line of line segment
@@ -3508,7 +3695,7 @@ void GeomLineSegment::setPoints(const Base::Vector3d& Start, const Base::Vector3
     }
     catch (Standard_Failure& e) {
 
-        throw Base::RuntimeError(e.GetMessageString());
+        THROWM(Base::CADKernelError,e.GetMessageString())
     }
 }
 
@@ -3554,8 +3741,21 @@ void GeomLineSegment::Restore    (Base::XMLReader &reader)
     EndY   = reader.getAttributeAsFloat("EndY");
     EndZ   = reader.getAttributeAsFloat("EndZ");
 
+    Base::Vector3d start(StartX,StartY,StartZ);
+    Base::Vector3d end(EndX,EndY,EndZ);
     // set the read geometry
-    setPoints(Base::Vector3d(StartX,StartY,StartZ),Base::Vector3d(EndX,EndY,EndZ) );
+    try {
+        setPoints(start, end);
+    }
+    catch(Base::ValueError&) {
+        // for a line segment construction, the only possibility of a value error is that
+        // the points are too close. The best try to restore is incrementing the distance.
+        // for other objects, the best effort may be just to leave default values.
+        reader.setPartialRestore(true);
+        end = start + Base::Vector3d(start.x*DBL_EPSILON,0,0);
+
+        setPoints(start, end);
+    }
 }
 
 PyObject *GeomLineSegment::getPyObject(void)
@@ -3574,6 +3774,10 @@ GeomOffsetCurve::GeomOffsetCurve()
 GeomOffsetCurve::GeomOffsetCurve(const Handle(Geom_Curve)& c, double offset, const gp_Dir& dir)
 {
     this->myCurve = new Geom_OffsetCurve(c, offset, dir);
+}
+
+GeomOffsetCurve::GeomOffsetCurve(const Handle(Geom_Curve)& c, double offset, Base::Vector3d& dir):GeomOffsetCurve(c,offset,gp_Dir(dir.x,dir.y,dir.z))
+{
 }
 
 GeomOffsetCurve::GeomOffsetCurve(const Handle(Geom_OffsetCurve)& c)
@@ -3614,49 +3818,6 @@ PyObject *GeomOffsetCurve::getPyObject(void)
 
 // -------------------------------------------------
 
-TYPESYSTEM_SOURCE(Part::GeomTrimmedCurve,Part::GeomCurve)
-
-GeomTrimmedCurve::GeomTrimmedCurve()
-{
-}
-
-GeomTrimmedCurve::GeomTrimmedCurve(const Handle(Geom_TrimmedCurve)& c)
-{
-    setHandle(c);
-}
-
-GeomTrimmedCurve::~GeomTrimmedCurve()
-{
-}
-
-void GeomTrimmedCurve::setHandle(const Handle(Geom_TrimmedCurve)& c)
-{
-    this->myCurve = Handle(Geom_TrimmedCurve)::DownCast(c->Copy());
-}
-
-const Handle(Geom_Geometry)& GeomTrimmedCurve::handle() const
-{
-    return myCurve;
-}
-
-Geometry *GeomTrimmedCurve::copy(void) const
-{
-    GeomTrimmedCurve *newCurve =  new GeomTrimmedCurve(myCurve);
-    newCurve->Construction = this->Construction;
-    return newCurve;
-}
-
-// Persistence implementer
-unsigned int GeomTrimmedCurve::getMemSize (void) const               {assert(0); return 0;/* not implemented yet */}
-void         GeomTrimmedCurve::Save       (Base::Writer &/*writer*/) const {assert(0);          /* not implemented yet */}
-void         GeomTrimmedCurve::Restore    (Base::XMLReader &/*reader*/)    {assert(0);          /* not implemented yet */}
-
-PyObject *GeomTrimmedCurve::getPyObject(void)
-{
-    return 0;
-}
-
-// -------------------------------------------------
 
 TYPESYSTEM_SOURCE_ABSTRACT(Part::GeomSurface,Part::Geometry)
 
@@ -3725,7 +3886,7 @@ bool GeomSurface::isUmbillic(double u, double v) const
         return prop.IsUmbilic();
     }
 
-    throw Base::RuntimeError("No curvature defined");
+    THROWM(Base::RuntimeError,"No curvature defined")
 }
 
 double GeomSurface::curvature(double u, double v, Curvature type) const
@@ -3752,7 +3913,7 @@ double GeomSurface::curvature(double u, double v, Curvature type) const
         return value;
     }
 
-    throw Base::RuntimeError("No curvature defined");
+    THROWM(Base::RuntimeError,"No curvature defined")
 }
 
 void GeomSurface::curvatureDirections(double u, double v, gp_Dir& maxD, gp_Dir& minD) const
@@ -3764,7 +3925,7 @@ void GeomSurface::curvatureDirections(double u, double v, gp_Dir& maxD, gp_Dir& 
         return;
     }
 
-    throw Base::RuntimeError("No curvature defined");
+    THROWM(Base::RuntimeError,"No curvature defined")
 }
 
 // -------------------------------------------------

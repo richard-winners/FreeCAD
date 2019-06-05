@@ -32,6 +32,7 @@
 /// Here the FreeCAD includes sorted by Base,App,Gui......
 #include <boost/math/special_functions/round.hpp>
 
+#include <Base/Console.h>
 #include <Base/Exception.h>
 #include <Base/Reader.h>
 #include <Base/Writer.h>
@@ -356,6 +357,8 @@ bool PropertyEnumeration::isPartOf(const char *value) const
 
 const char * PropertyEnumeration::getValueAsString(void) const
 {
+    if (!_enum.isValid())
+        throw Base::RuntimeError("Cannot get value from invalid enumeration");
     return _enum.getCStr();
 }
 
@@ -372,6 +375,11 @@ std::vector<std::string> PropertyEnumeration::getEnumVector(void) const
 const char ** PropertyEnumeration::getEnums(void) const
 {
     return _enum.getEnums();
+}
+
+bool PropertyEnumeration::isValid(void) const
+{
+    return _enum.isValid();
 }
 
 void PropertyEnumeration::Save(Base::Writer &writer) const
@@ -415,6 +423,11 @@ void PropertyEnumeration::Restore(Base::XMLReader &reader)
         _enum.setEnums(values);
     }
 
+    if (val < 0) {
+        Base::Console().Warning("Enumeration index %d is out of range, ignore it\n", val);
+        val = getValue();
+    }
+
     setValue(val);
 }
 
@@ -443,34 +456,7 @@ void PropertyEnumeration::setPyObject(PyObject *value)
             hasSetValue();
         }
     }
-    else if (PyUnicode_Check(value)) {
-#if PY_MAJOR_VERSION >= 3
-        const char* str = PyUnicode_AsUTF8 (value);
-        if (_enum.contains(str)) {
-            aboutToSetValue();
-            _enum.setValue(PyUnicode_AsUTF8 (value));
-            hasSetValue();
-        }
-        else {
-            std::stringstream out;
-            out << "'" << str << "' is not part of the enumeration";
-            throw Base::ValueError(out.str());
-        }
-#else
-        PyObject* unicode = PyUnicode_AsUTF8String(value);
-        const char* str = PyString_AsString (unicode);
-        if (_enum.contains(str)) {
-            aboutToSetValue();
-            _enum.setValue(PyString_AsString (unicode));
-            hasSetValue();
-        }
-        else {
-            std::stringstream out;
-            out << "'" << str << "' is not part of the enumeration";
-            throw Base::ValueError(out.str());
-        }
-        Py_DECREF(unicode);
-    }
+#if PY_MAJOR_VERSION < 3
     else if (PyString_Check(value)) {
         const char* str = PyString_AsString (value);
         if (_enum.contains(str)) {
@@ -483,8 +469,8 @@ void PropertyEnumeration::setPyObject(PyObject *value)
             out << "'" << str << "' is not part of the enumeration";
             throw Base::ValueError(out.str());
         }
-#endif
     }
+#endif
     else if (PyUnicode_Check(value)) {
 #if PY_MAJOR_VERSION >=3
         std::string str = PyUnicode_AsUTF8(value);
@@ -522,7 +508,7 @@ void PropertyEnumeration::setPyObject(PyObject *value)
 #endif
             }
 #if PY_MAJOR_VERSION < 3
-            if (PyString_Check(item)) {
+            else if (PyString_Check(item)) {
                 values[i] = PyString_AsString(item);
             }
 #endif
@@ -1357,7 +1343,7 @@ void PropertyFloatList::Restore(Base::XMLReader &reader)
     string file (reader.getAttribute("file") );
 
     if (!file.empty()) {
-        // initate a file read
+        // initiate a file read
         reader.addFile(file.c_str(),this);
     }
 }
@@ -1367,7 +1353,7 @@ void PropertyFloatList::SaveDocFile (Base::Writer &writer) const
     Base::OutputStream str(writer.Stream());
     uint32_t uCt = (uint32_t)getSize();
     str << uCt;
-    if (writer.getFileVersion() > 0) {
+    if (!isSinglePrecision()) {
         for (std::vector<double>::const_iterator it = _lValueList.begin(); it != _lValueList.end(); ++it) {
             str << *it;
         }
@@ -1386,7 +1372,7 @@ void PropertyFloatList::RestoreDocFile(Base::Reader &reader)
     uint32_t uCt=0;
     str >> uCt;
     std::vector<double> values(uCt);
-    if (reader.getFileVersion() > 0) {
+    if (!isSinglePrecision()) {
         for (std::vector<double>::iterator it = values.begin(); it != values.end(); ++it) {
             str >> *it;
         }
@@ -1753,6 +1739,16 @@ void PropertyStringList::setPyObject(PyObject *value)
         setValue(PyString_AsString(value));
     }
 #endif
+    else if (PyUnicode_Check(value)) {
+#if PY_MAJOR_VERSION >= 3
+        setValue(PyUnicode_AsUTF8(value));
+    }
+#else
+        PyObject* unicode = PyUnicode_AsUTF8String(value);
+        setValue(PyString_AsString(unicode));
+        Py_DECREF(unicode);
+    }
+#endif
     else if (PySequence_Check(value)) {
         Py_ssize_t nSize = PySequence_Size(value);
         std::vector<std::string> values;
@@ -1781,16 +1777,6 @@ void PropertyStringList::setPyObject(PyObject *value)
         
         setValues(values);
     }
-    else if (PyUnicode_Check(value)) {
-#if PY_MAJOR_VERSION >= 3
-        setValue(PyUnicode_AsUTF8(value));
-    }
-#else
-        PyObject* unicode = PyUnicode_AsUTF8String(value);
-        setValue(PyString_AsString(unicode));
-        Py_DECREF(unicode);
-    }
-#endif
     else {
         std::string error = std::string("type must be str or unicode or list of str or list of unicodes, not ");
         error += value->ob_type->tp_name;
@@ -2595,7 +2581,7 @@ void PropertyColorList::Restore(Base::XMLReader &reader)
         std::string file (reader.getAttribute("file"));
 
         if (!file.empty()) {
-            // initate a file read
+            // initiate a file read
             reader.addFile(file.c_str(),this);
         }
     }
@@ -2874,7 +2860,7 @@ void PropertyMaterialList::Restore(Base::XMLReader &reader)
         std::string file(reader.getAttribute("file"));
 
         if (!file.empty()) {
-            // initate a file read
+            // initiate a file read
             reader.addFile(file.c_str(), this);
         }
     }

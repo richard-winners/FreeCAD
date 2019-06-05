@@ -27,6 +27,7 @@ import FreeCAD
 import FreeCADGui
 import PathScripts.PathLog as PathLog
 import PathScripts.PathUtils as PathUtils
+import math
 
 if False:
     PathLog.setLevel(PathLog.Level.DEBUG, PathLog.thisModule())
@@ -45,16 +46,44 @@ class MESHGate:
 
 class ENGRAVEGate:
     def allow(self, doc, obj, sub):
-        engraveable = False
-        if hasattr(obj, "Shape"):
-            if obj.Shape.BoundBox.ZLength == 0.0:
-                try:
-                    obj = obj.Shape
-                except:
-                    return False
-                if len(obj.Wires) > 0:
-                    engraveable = True
-        return engraveable
+        try:
+            shape = obj.Shape
+        except:
+            return False
+
+        if math.fabs(shape.Volume) < 1e-9 and len(shape.Wires) > 0:
+            return True
+
+        if shape.ShapeType == 'Edge':
+            return True
+
+        if sub:
+            subShape = shape.getElement(sub)
+            if subShape.ShapeType == 'Edge':
+                return True
+
+        return False
+
+class CHAMFERGate:
+    def allow(self, doc, obj, sub):
+        try:
+            shape = obj.Shape
+        except:
+            return False
+
+        if math.fabs(shape.Volume) < 1e-9 and len(shape.Wires) > 0:
+            return True
+
+        if 'Edge' == shape.ShapeType or 'Face' == shape.ShapeType:
+            return True
+
+        if sub:
+            subShape = shape.getElement(sub)
+            if 'Edge' == subShape.ShapeType or 'Face' == subShape.ShapeType:
+                return True
+
+        print(shape.ShapeType)
+        return False
 
 
 class DRILLGate:
@@ -128,6 +157,17 @@ class POCKETGate:
 
         return pocketable
 
+class ADAPTIVEGate:
+    def allow(self, doc, obj, sub):
+
+        adaptive = True
+        try:
+            obj = obj.Shape
+        except:
+            return False
+            
+        return adaptive
+
 class CONTOURGate:
     def allow(self, doc, obj, sub):
         pass
@@ -148,6 +188,10 @@ def engraveselect():
     FreeCADGui.Selection.addSelectionGate(ENGRAVEGate())
     FreeCAD.Console.PrintWarning("Engraving Select Mode\n")
 
+def chamferselect():
+    FreeCADGui.Selection.addSelectionGate(CHAMFERGate())
+    FreeCAD.Console.PrintWarning("Deburr Select Mode\n")
+
 def profileselect():
     FreeCADGui.Selection.addSelectionGate(PROFILEGate())
     FreeCAD.Console.PrintWarning("Profiling Select Mode\n")
@@ -156,6 +200,10 @@ def pocketselect():
     FreeCADGui.Selection.addSelectionGate(POCKETGate())
     FreeCAD.Console.PrintWarning("Pocketing Select Mode\n")
 
+def adaptiveselect():
+    FreeCADGui.Selection.addSelectionGate(ADAPTIVEGate())
+    FreeCAD.Console.PrintWarning("Adaptive Select Mode\n")
+
 def surfaceselect():
     FreeCADGui.Selection.addSelectionGate(MESHGate())
     FreeCAD.Console.PrintWarning("Surfacing Select Mode\n")
@@ -163,6 +211,7 @@ def surfaceselect():
 def select(op):
     opsel = {}
     opsel['Contour'] = contourselect
+    opsel['Deburr'] = chamferselect
     opsel['Drilling'] = drillselect
     opsel['Engrave'] = engraveselect
     opsel['Helix'] = drillselect
@@ -173,6 +222,7 @@ def select(op):
     opsel['Profile Edges'] = eselect
     opsel['Profile Faces'] = profileselect
     opsel['Surface'] = surfaceselect
+    opsel['Adaptive'] = adaptiveselect
     return opsel[op]
 
 def clear():

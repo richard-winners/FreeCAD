@@ -89,7 +89,7 @@ class ObjectOp(PathOp.ObjectOp):
         Obviously this is as fragile as can be, but currently the best we can do while the panel sheets
         hide the actual features from Path and they can't be referenced directly.
         '''
-        ids = string.split(sub, '.')
+        ids = sub.split(".")
         holeId = int(ids[0])
         wireId = int(ids[1])
         edgeId = int(ids[2])
@@ -187,19 +187,21 @@ class ObjectOp(PathOp.ObjectOp):
         if not self.getJob(obj):
             return
         features = []
-        if self.baseIsArchPanel(obj, self.baseobject):
-            holeshapes = self.baseobject.Proxy.getHoles(self.baseobject, transform=True)
+        if 1 == len(self.model) and self.baseIsArchPanel(obj, self.model[0]):
+            panel = self.model[0]
+            holeshapes = panel.Proxy.getHoles(panel, transform=True)
             tooldiameter = obj.ToolController.Proxy.getTool(obj.ToolController).Diameter
             for holeNr, hole in enumerate(holeshapes):
                 PathLog.debug('Entering new HoleShape')
                 for wireNr, wire in enumerate(hole.Wires):
                     PathLog.debug('Entering new Wire')
                     for edgeNr, edge in enumerate(wire.Edges):
-                        if PathUtils.isDrillable(self.baseobject, edge, tooldiameter):
+                        if PathUtils.isDrillable(panel, edge, tooldiameter):
                             PathLog.debug('Found drillable hole edges: {}'.format(edge))
-                            features.append((self.baseobject, "%d.%d.%d" % (holeNr, wireNr, edgeNr)))
+                            features.append((panel, "%d.%d.%d" % (holeNr, wireNr, edgeNr)))
         else:
-            features = self.findHoles(obj, self.baseobject)
+            for base in self.model:
+                features.extend(self.findHoles(obj, base))
         obj.Base = features
         obj.Disabled = []
 

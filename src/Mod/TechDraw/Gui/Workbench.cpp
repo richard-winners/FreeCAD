@@ -54,22 +54,41 @@ Gui::MenuItem* Workbench::setupMenuBar() const
     draw->setCommand("TechDraw");
     *draw << "TechDraw_NewPageDef";
     *draw << "TechDraw_NewPage";
+    *draw << "Separator";
     *draw << "TechDraw_NewView";
 //    *draw << "TechDraw_NewMulti";     //deprecated
     *draw << "TechDraw_ProjGroup";
     *draw << "TechDraw_NewViewSection";
     *draw << "TechDraw_NewViewDetail";
+    *draw << "Separator";
     *draw << "TechDraw_Annotation";
-    *draw << "TechDraw_Symbol";
+    *draw << "TechDraw_DraftView";
+    *draw << "TechDraw_ArchView";
     *draw << "TechDraw_Spreadsheet";
+    *draw << "Separator";
     *draw << "TechDraw_Clip";
     *draw << "TechDraw_ClipPlus";
     *draw << "TechDraw_ClipMinus";
-    *draw << "TechDraw_NewDimension";
-    *draw << "TechDraw_DraftView";
-    *draw << "TechDraw_ArchView";
+    *draw << "Separator";
+    *draw << "TechDraw_NewLengthDimension";
+    *draw << "TechDraw_NewDistanceXDimension";
+    *draw << "TechDraw_NewDistanceYDimension";
+    *draw << "TechDraw_NewRadiusDimension";
+    *draw << "TechDraw_NewDiameterDimension";
+    *draw << "TechDraw_NewAngleDimension";
+    *draw << "TechDraw_NewAngle3PtDimension";
+    *draw << "TechDraw_LinkDimension";
+    *draw << "TechDraw_NewBalloon";
+    *draw << "Separator";
     *draw << "TechDraw_ExportPage";
+    *draw << "TechDraw_ExportPageDxf";
+    *draw << "Separator";
+    *draw << "TechDraw_NewHatch";
+    *draw << "TechDraw_NewGeomHatch";
+    *draw << "TechDraw_Symbol";
     *draw << "TechDraw_Image";
+    *draw << "TechDraw_ToggleFrame";
+//    *decor << "TechDraw_RedrawPage";
 
     return root;
 }
@@ -108,12 +127,15 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
     *dims << "TechDraw_NewRadiusDimension";
     *dims << "TechDraw_NewDiameterDimension";
     *dims << "TechDraw_NewAngleDimension";
+    *dims << "TechDraw_NewAngle3PtDimension";
     *dims << "TechDraw_LinkDimension";
+    *dims << "TechDraw_NewBalloon";
 //    *dims << "TechDraw_NewDimension"
 
     Gui::ToolBarItem *file = new Gui::ToolBarItem(root);
     file->setCommand("TechDraw File Access");
     *file << "TechDraw_ExportPage";
+    *file << "TechDraw_ExportPageDxf";
 
     Gui::ToolBarItem *decor = new Gui::ToolBarItem(root);
     decor->setCommand("TechDraw Decoration");
@@ -122,7 +144,7 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
     *decor << "TechDraw_Symbol";
     *decor << "TechDraw_Image";
     *decor << "TechDraw_ToggleFrame";
-    *decor << "TechDraw_RedrawPage";
+//    *decor << "TechDraw_RedrawPage";
     return root;
 }
 
@@ -159,12 +181,15 @@ Gui::ToolBarItem* Workbench::setupCommandBars() const
     *dims << "TechDraw_NewRadiusDimension";
     *dims << "TechDraw_NewDiameterDimension";
     *dims << "TechDraw_NewAngleDimension";
+    *dims << "TechDraw_NewAngle3PtDimension";
     *dims << "TechDraw_LinkDimension";
+    *dims << "TechDraw_NewBalloon";
 //    *dims << "TechDraw_NewDimension";
 
     Gui::ToolBarItem *file = new Gui::ToolBarItem(root);
     file->setCommand("TechDraw File Access");
     *file << "TechDraw_ExportPage";
+    *file << "TechDraw_ExportPageDxf";
  
     Gui::ToolBarItem *decor = new Gui::ToolBarItem(root);
     decor->setCommand("TechDraw Decoration");
@@ -173,7 +198,7 @@ Gui::ToolBarItem* Workbench::setupCommandBars() const
     *decor << "TechDraw_Symbol";
     *decor << "TechDraw_Image";
     *decor << "TechDraw_ToggleFrame";
-    *decor << "TechDraw_RedrawPage";
+//    *decor << "TechDraw_RedrawPage";
 
     return root;
 }

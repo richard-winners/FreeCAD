@@ -24,19 +24,20 @@
 '''PathUtils -common functions used in PathScripts for filterig, sorting, and generating gcode toolpath data '''
 import FreeCAD
 import FreeCADGui
-import math
-import numpy
 import Part
 import Path
 import PathScripts
+import PathScripts.PathGeom as PathGeom
 import TechDraw
+import math
+import numpy
+import sys
 
 from DraftGeomUtils import geomType
 from FreeCAD import Vector
 from PathScripts import PathJob
 from PathScripts import PathJobCmd
 from PathScripts import PathLog
-from PathScripts.PathGeom import PathGeom
 from PySide import QtCore
 from PySide import QtGui
 
@@ -130,6 +131,12 @@ def isDrillable(obj, candidate, tooldiameter=None, includePartials=False):
     tooldiameter=float
     """
     PathLog.track('obj: {} candidate: {} tooldiameter {}'.format(obj, candidate, tooldiameter))
+    if list == type(obj):
+        for shape in obj:
+            if isDrillable(shape, candidate, tooldiameter, includePartials):
+                return (True, shape)
+        return (False, None)
+
     drillable = False
     try:
         if candidate.ShapeType == 'Face':
@@ -459,9 +466,9 @@ def findParentJob(obj):
     '''retrieves a parent job object for an operation or other Path object'''
     PathLog.track()
     for i in obj.InList:
-        if isinstance(i.Proxy, PathScripts.PathJob.ObjectJob):
+        if hasattr(i, 'Proxy') and isinstance(i.Proxy, PathScripts.PathJob.ObjectJob):
             return i
-        if i.TypeId == "Path::FeaturePython" or i.TypeId == "Path::FeatureCompoundPython":
+        if i.TypeId == "Path::FeaturePython" or i.TypeId == "Path::FeatureCompoundPython" or i.TypeId == "App::DocumentObjectGroup":
             grandParent = findParentJob(i)
             if grandParent is not None:
                 return grandParent
@@ -493,16 +500,36 @@ def addToJob(obj, jobname=None):
         elif len(jobs) == 1:
             job = jobs[0]
         else:
-            # form = FreeCADGui.PySideUic.loadUi(FreeCAD.getHomePath() + "Mod/Path/DlgJobChooser.ui")
-            form = FreeCADGui.PySideUic.loadUi(":/panels/DlgJobChooser.ui")
-            mylist = [i.Label for i in jobs]
-            form.cboProject.addItems(mylist)
-            r = form.exec_()
-            if r is False:
-                return None
+            selected = FreeCADGui.Selection.getSelection()
+            if 1 == len(selected) and selected[0] in jobs:
+                job = selected[0]
             else:
-                print(form.cboProject.currentText())
-                job = [i for i in jobs if i.Label == form.cboProject.currentText()][0]
+                modelSelected = []
+                for job in jobs:
+                    if all([o in job.Model.Group for o in selected]):
+                        modelSelected.append(job)
+                if 1 == len(modelSelected):
+                    job = modelSelected[0]
+                else:
+                    modelObjectSelected = []
+                    for job in jobs:
+                        if all([o in job.Proxy.baseObjects(job) for o in selected]):
+                            modelObjectSelected.append(job)
+                    if 1 == len(modelObjectSelected):
+                        job = modelObjectSelected[0]
+                    else:
+                        # form = FreeCADGui.PySideUic.loadUi(FreeCAD.getHomePath() + "Mod/Path/DlgJobChooser.ui")
+                        form = FreeCADGui.PySideUic.loadUi(":/panels/DlgJobChooser.ui")
+                        if modelObjectSelected:
+                            mylist = [j.Label for j in modelObjectSelected]
+                        else:
+                            mylist = [j.Label for j in jobs]
+                        form.cboProject.addItems(mylist)
+                        r = form.exec_()
+                        if r is False or r == 0:
+                            return None
+                        else:
+                            job = [j for j in jobs if j.Label == form.cboProject.currentText()][0]
 
     if obj and job:
         job.Proxy.addOperation(obj)
@@ -688,7 +715,10 @@ def sort_jobs(locations, keys, attractors=[]):
         keys: two-element list of keys for X and Y coordinates. for example ['x','y']
         originally written by m0n5t3r for PathHelix
     """
-    from Queue import PriorityQueue
+    try:
+        from queue import PriorityQueue
+    except ImportError:
+        from Queue import PriorityQueue
     from collections import defaultdict
 
     attractors = attractors or [keys[0]]
@@ -712,10 +742,11 @@ def sort_jobs(locations, keys, attractors=[]):
     def find_closest(location_list, location, dist):
         q = PriorityQueue()
 
-        for j in location_list:
-            q.put((dist(j, location) + weight(j), j))
+        for i,j in enumerate(location_list):
+            # prevent dictionary comparison by inserting the index
+            q.put((dist(j, location) + weight(j), i, j))
 
-        prio, result = q.get()
+        prio, i, result = q.get()
 
         return result
 

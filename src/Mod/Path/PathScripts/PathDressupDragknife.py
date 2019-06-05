@@ -331,6 +331,13 @@ class ObjectDressup:
                     newpath.append(curCommand)
                     continue
 
+                if curCommand.x is None:
+                    curCommand.x = currLocation['X']
+                if curCommand.y is None:
+                    curCommand.y = currLocation['Y']
+                if curCommand.z is None:
+                    curCommand.z = currLocation['Z']
+
                 # rapid retract triggers exit move, else just add to output
                 if curCommand.Name in rapidcommands:
                     if (curCommand.z > obj.pivotheight) and (len(queue) == 3):
@@ -457,7 +464,8 @@ class ViewProviderDressup:
 
     def onDelete(self, arg1=None, arg2=None):
         FreeCADGui.ActiveDocument.getObject(arg1.Object.Base.Name).Visibility = True
-        PathUtils.addToJob(arg1.Object.Base)
+        job = PathUtils.findParentJob(arg1.Object.Base)
+        job.Proxy.addOperation(arg1.Object.Base, arg1.Object)
         arg1.Object.Base = None
         return True
 
@@ -482,11 +490,11 @@ class CommandDressupDragknife:
         selection = FreeCADGui.Selection.getSelection()
         if len(selection) != 1:
             FreeCAD.Console.PrintError(
-                translate("Path_DressupDragKnife", "Please select one path object\n"))
+                translate("Path_DressupDragKnife", "Please select one path object")+"\n")
             return
         if not selection[0].isDerivedFrom("Path::Feature"):
             FreeCAD.Console.PrintError(
-                translate("Path_DressupDragKnife", "The selected object is not a path\n"))
+                translate("Path_DressupDragKnife", "The selected object is not a path")+"\n")
             return
         if selection[0].isDerivedFrom("Path::FeatureCompoundPython"):
             FreeCAD.Console.PrintError(
@@ -499,10 +507,12 @@ class CommandDressupDragknife:
         FreeCADGui.addModule("PathScripts.PathUtils")
         FreeCADGui.doCommand('obj = FreeCAD.ActiveDocument.addObject("Path::FeaturePython","DragknifeDressup")')
         FreeCADGui.doCommand('PathScripts.PathDressupDragknife.ObjectDressup(obj)')
-        FreeCADGui.doCommand('obj.Base = FreeCAD.ActiveDocument.' + selection[0].Name)
+        FreeCADGui.doCommand('base = FreeCAD.ActiveDocument.' + selection[0].Name)
+        FreeCADGui.doCommand('job = PathScripts.PathUtils.findParentJob(base)')
+        FreeCADGui.doCommand('obj.Base = base')
+        FreeCADGui.doCommand('job.Proxy.addOperation(obj, base)')
         FreeCADGui.doCommand('PathScripts.PathDressupDragknife.ViewProviderDressup(obj.ViewObject)')
-        FreeCADGui.doCommand('PathScripts.PathUtils.addToJob(obj)')
-        FreeCADGui.doCommand('Gui.ActiveDocument.getObject(obj.Base.Name).Visibility = False')
+        FreeCADGui.doCommand('Gui.ActiveDocument.getObject(base.Name).Visibility = False')
         FreeCADGui.doCommand('obj.filterangle = 20')
         FreeCADGui.doCommand('obj.offset = 2')
         FreeCADGui.doCommand('obj.pivotheight = 4')

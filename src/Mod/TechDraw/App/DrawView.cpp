@@ -67,15 +67,14 @@ App::PropertyFloatConstraint::Constraints DrawView::scaleRange = {Precision::Con
 
 PROPERTY_SOURCE(TechDraw::DrawView, App::DocumentObject)
 
-DrawView::DrawView(void)
-  : autoPos(true),
+DrawView::DrawView(void):
+    autoPos(true),
     mouseMove(false)
 {
     static const char *group = "Base";
-
-    ADD_PROPERTY_TYPE(X ,(0),group,App::Prop_None,"X position of the view on the page in modelling units (mm)");
-    ADD_PROPERTY_TYPE(Y ,(0),group,App::Prop_None,"Y position of the view on the page in modelling units (mm)");
-    ADD_PROPERTY_TYPE(LockPosition ,(false),group,App::Prop_None,"Prevent View from moving in Gui");
+    ADD_PROPERTY_TYPE(X ,(0),group,App::Prop_None,"X position of the view on the page in internal units (mm)");
+    ADD_PROPERTY_TYPE(Y ,(0),group,App::Prop_None,"Y position of the view on the page in internal units (mm)");
+    ADD_PROPERTY_TYPE(LockPosition ,(false),group,App::Prop_None,"Lock View position to parent Page or Group");
     ADD_PROPERTY_TYPE(Rotation ,(0),group,App::Prop_None,"Rotation of the view on the page in degrees counterclockwise");
 
     ScaleType.setEnums(ScaleTypeEnums);
@@ -92,7 +91,9 @@ DrawView::~DrawView()
 
 App::DocumentObjectExecReturn *DrawView::execute(void)
 {
-    return App::DocumentObject::StdReturn;                //DO::execute returns 0
+    handleXYLock();
+    requestPaint();
+    return App::DocumentObject::execute();
 }
 
 void DrawView::checkScale(void)
@@ -103,6 +104,7 @@ void DrawView::checkScale(void)
         if (ScaleType.isValue("Page")) {
             if(std::abs(page->Scale.getValue() - getScale()) > FLT_EPSILON) {
                 Scale.setValue(page->Scale.getValue());
+                Scale.purgeTouched();
             }
         }
     }
@@ -111,9 +113,7 @@ void DrawView::checkScale(void)
 void DrawView::onChanged(const App::Property* prop)
 {
     if (!isRestoring()) {
-        if (this->isDerivedFrom(TechDraw::DrawProjGroupItem::getClassTypeId()))  {
-            //do nothing. DPGI/DPG handles itself
-        } else if (prop == &ScaleType) {
+        if (prop == &ScaleType) {
             auto page = findParentPage();
             if (ScaleType.isValue("Page")) {
                 Scale.setStatus(App::Property::ReadOnly,true);
@@ -121,6 +121,7 @@ void DrawView::onChanged(const App::Property* prop)
                 if (page != nullptr) {
                     if(std::abs(page->Scale.getValue() - getScale()) > FLT_EPSILON) {
                        Scale.setValue(page->Scale.getValue());
+                       Scale.purgeTouched();
                     }
                 }
             } else if ( ScaleType.isValue("Custom") ) {
@@ -130,24 +131,53 @@ void DrawView::onChanged(const App::Property* prop)
             } else if ( ScaleType.isValue("Automatic") ) {
                 Scale.setStatus(App::Property::ReadOnly,true);
                 App::GetApplication().signalChangePropertyEditor(Scale);
-                if (this->isDerivedFrom(TechDraw::DrawProjGroup::getClassTypeId()))  {
-                    //do nothing. DPG handles itself
-                } else {
-                    if (!checkFit(page)) {
-                        double newScale = autoScale(page->getPageWidth(),page->getPageHeight());
-                        if(std::abs(newScale - getScale()) > FLT_EPSILON) {           //stops onChanged/execute loop
-                            Scale.setValue(newScale);
-                        }
+                if (!checkFit(page)) {
+                    double newScale = autoScale(page->getPageWidth(),page->getPageHeight());
+                    if(std::abs(newScale - getScale()) > FLT_EPSILON) {           //stops onChanged/execute loop
+                        Scale.setValue(newScale);
+                        Scale.purgeTouched();
                     }
                 }
             }
-        }
-        if (prop == &X ||       //nothing needs to be calculated, just the graphic needs to be shifted.
-            prop == &Y) {
-            requestPaint();
+        } else if (prop == &LockPosition) {
+            handleXYLock();
+            LockPosition.purgeTouched(); 
         }
     }
     App::DocumentObject::onChanged(prop);
+}
+
+bool DrawView::isLocked(void) const
+{
+    return LockPosition.getValue();
+}
+
+//override this for View inside a group (ex DPGI in DPG)
+void DrawView::handleXYLock(void) 
+{
+    if (isLocked()) {
+        if (!X.testStatus(App::Property::ReadOnly)) {
+            X.setStatus(App::Property::ReadOnly,true);
+            App::GetApplication().signalChangePropertyEditor(X);
+            X.purgeTouched();
+        }
+        if (!Y.testStatus(App::Property::ReadOnly)) {
+            Y.setStatus(App::Property::ReadOnly,true);
+            App::GetApplication().signalChangePropertyEditor(Y);
+            Y.purgeTouched();
+        }
+    } else {
+        if (X.testStatus(App::Property::ReadOnly)) {
+            X.setStatus(App::Property::ReadOnly,false);
+            App::GetApplication().signalChangePropertyEditor(X);
+            X.purgeTouched();
+        }
+        if (Y.testStatus(App::Property::ReadOnly)) {
+            Y.setStatus(App::Property::ReadOnly,false);
+            App::GetApplication().signalChangePropertyEditor(Y);
+            Y.purgeTouched();
+        }
+    }
 }
 
 short DrawView::mustExecute() const
@@ -155,7 +185,9 @@ short DrawView::mustExecute() const
     short result = 0;
     if (!isRestoring()) {
         result  =  (Scale.isTouched()  ||
-                    ScaleType.isTouched() );
+                    ScaleType.isTouched() ||
+                    X.isTouched() ||
+                    Y.isTouched() );
     }
     if ((bool) result) {
         return result;
@@ -172,6 +204,7 @@ QRectF DrawView::getRect() const
 
 void DrawView::onDocumentRestored()
 {
+    handleXYLock();
     DrawView::execute();
 }
 
@@ -209,6 +242,23 @@ bool DrawView::isInClip()
     return false;
 }
 
+DrawViewClip* DrawView::getClipGroup(void)
+{
+    std::vector<App::DocumentObject*> parent = getInList();
+    App::DocumentObject* obj = nullptr;
+    DrawViewClip* result = nullptr;
+    for (std::vector<App::DocumentObject*>::iterator it = parent.begin(); it != parent.end(); ++it) {
+        if ((*it)->getTypeId().isDerivedFrom(DrawViewClip::getClassTypeId())) {
+            obj = (*it);
+            result = dynamic_cast<DrawViewClip*>(obj);
+            break;
+
+        }
+    }
+    return result;
+}
+
+
 double DrawView::autoScale(double w, double h) const
 {
     double fudgeFactor = 0.90;
@@ -238,8 +288,11 @@ bool DrawView::checkFit(TechDraw::DrawPage* p) const
 
 void DrawView::setPosition(double x, double y)
 {
-    X.setValue(x);
-    Y.setValue(y);
+//    Base::Console().Message("DV::setPosition(%.3f,%.3f) - \n",x,y,getNameInDocument());
+    if (!isLocked()) {
+        X.setValue(x);
+        Y.setValue(y);
+    }
 }
 
 //TODO: getScale is no longer needed and could revert to Scale.getValue
@@ -333,7 +386,7 @@ void DrawView::Restore(Base::XMLReader &reader)
         }
 #ifndef FC_DEBUG
         catch (...) {
-            Base::Console().Error("PropertyContainer::Restore: Unknown C++ exception thrown");
+            Base::Console().Error("PropertyContainer::Restore: Unknown C++ exception thrown\n");
         }
 #endif
 

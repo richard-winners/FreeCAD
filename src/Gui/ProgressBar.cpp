@@ -132,19 +132,14 @@ void Sequencer::startStep()
     if (thr != currentThread) {
         d->guiThread = false;
         d->bar->setRange(0, (int)nTotalSteps);
-        if (nTotalSteps == 0) {
-            d->progressTime.start();
-        }
+        d->progressTime.start();
         d->measureTime.start();
         QMetaObject::invokeMethod(d->bar, "aboutToShow", Qt::QueuedConnection);
     }
     else {
         d->guiThread = true;
         d->bar->setRange(0, (int)nTotalSteps);
-        if (nTotalSteps == 0) {
-            d->progressTime.start();
-        }
-
+        d->progressTime.start();
         d->measureTime.start();
         d->waitCursor = new Gui::WaitCursor;
         d->bar->enterControlEvents();
@@ -194,8 +189,8 @@ void Sequencer::setValue(int step)
     // if number of total steps is unknown then increment only by one
     if (nTotalSteps == 0) {
         int elapsed = d->progressTime.elapsed();
-        // allow an update every 500 milliseconds only
-        if (elapsed > 500) {
+        // allow an update every 100 milliseconds only
+        if (elapsed > 100) {
             d->progressTime.restart();
             if (thr != currentThread) {
                 QMetaObject::invokeMethod(d->bar, "setValue", Qt::/*Blocking*/QueuedConnection,
@@ -209,6 +204,7 @@ void Sequencer::setValue(int step)
     }
     else {
         int elapsed = d->progressTime.elapsed();
+        // allow an update every 100 milliseconds only
         if (elapsed > 100) {
             d->progressTime.restart();
             if (thr != currentThread) {
@@ -247,7 +243,7 @@ void Sequencer::showRemainingTime()
             QTime time( 0,0, 0);
             time = time.addSecs( rest/1000 );
             QString remain = Gui::ProgressBar::tr("Remaining: %1").arg(time.toString());
-            QString status = QString::fromLatin1("%1\t[%2]").arg(txt).arg(remain);
+            QString status = QString::fromLatin1("%1\t[%2]").arg(txt, remain);
 
             if (thr != currentThread) {
                 QMetaObject::invokeMethod(getMainWindow()->statusBar(), "showMessage",
@@ -281,7 +277,7 @@ void Sequencer::resetData()
     }
     else {
         d->bar->reset();
-        // Note: Under Qt 4.1.4 this forces to run QWindowsStyle::eventFilter() twice 
+        // Note: Under Qt 4.1.4 this forces to run QWindowsStyle::eventFilter() twice
         // handling the same event thus a warning is printed. Possibly, this is a bug
         // in Qt. The message is QEventDispatcherUNIX::unregisterTimer: invalid argument.
         d->bar->hide();
@@ -392,7 +388,7 @@ void ProgressBar::delayedShow()
 bool ProgressBar::canAbort() const
 {
     int ret = QMessageBox::question(getMainWindow(),tr("Aborting"),
-    tr("Do you really want to abort the operation?"),  QMessageBox::Yes, 
+    tr("Do you really want to abort the operation?"),  QMessageBox::Yes,
     QMessageBox::No|QMessageBox::Default);
 
     return (ret == QMessageBox::Yes) ? true : false;
@@ -444,7 +440,7 @@ bool ProgressBar::eventFilter(QObject* o, QEvent* e)
                 if (ke->key() == Qt::Key_Escape) {
                     // eventFilter() was called from the application 50 times without performing a new step (app could hang)
                     if (d->observeEventFilter > 50) {
-                        // tries to unlock the application if it hangs (propably due to incorrect usage of Base::Sequencer)
+                        // tries to unlock the application if it hangs (probably due to incorrect usage of Base::Sequencer)
                         if (ke->modifiers() & (Qt::ControlModifier | Qt::AltModifier)) {
                             sequencer->resetData();
                             return true;
@@ -458,7 +454,7 @@ bool ProgressBar::eventFilter(QObject* o, QEvent* e)
                 return true;
             }   break;
 
-        // ignore alle these events
+        // ignore all these events
         case QEvent::KeyRelease:
         case QEvent::Enter:
         case QEvent::Leave:
@@ -467,15 +463,15 @@ bool ProgressBar::eventFilter(QObject* o, QEvent* e)
             {
                 return true;
             }   break;
-      
-        // special case if the main window's close button was pressed 
+
+        // special case if the main window's close button was pressed
         case QEvent::Close:
             {
                 // avoid to exit while app is working
                 // note: all other widget types are allowed to be closed anyway
                 if (o == getMainWindow()) {
                     e->ignore();
-                    return true; 
+                    return true;
                 }
             }   break;
 

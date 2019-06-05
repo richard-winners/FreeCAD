@@ -95,14 +95,14 @@ int Part::ImportStepParts(App::Document *pcDoc, const char* Name)
     if (!fi.exists()) {
         std::stringstream str;
         str << "File '" << Name << "' does not exist!";
-        throw Base::Exception(str.str().c_str());
+        throw Base::FileException(str.str().c_str());
     }
     std::string encodednamestr = encodeFilename(std::string(Name));
     const char * encodedname = encodednamestr.c_str();
 
     if (aReader.ReadFile((Standard_CString)encodedname) != 
             IFSelect_RetDone) {
-        throw Base::Exception("Cannot open STEP file");
+        throw Base::FileException("Cannot open STEP file");
     }
 
     Handle(Message_ProgressIndicator) pi = new ProgressIndicator(100);
@@ -122,7 +122,7 @@ int Part::ImportStepParts(App::Document *pcDoc, const char* Name)
     // Collecting resulting entities
     Standard_Integer nbs = aReader.NbShapes();
     if (nbs == 0) {
-        throw Base::Exception("No shapes found in file ");
+        throw Base::FileException("No shapes found in file ");
     }
     else {
         //Handle(StepData_StepModel) Model = aReader.StepModel();
@@ -237,9 +237,9 @@ int Part::ImportStepParts(App::Document *pcDoc, const char* Name)
 static void findStyledSR (const Handle(StepVisual_StyledItem) &style,
                           Handle(StepShape_ShapeRepresentation)& aSR)
 {
-    // search Shape Represenatation for component styled item
+    // search Shape Representation for component styled item
     for (Standard_Integer j=1; j <= style->NbStyles(); j++) {
-        Handle(StepVisual_PresentationStyleByContext) PSA = 
+        Handle(StepVisual_PresentationStyleByContext) PSA =
             Handle(StepVisual_PresentationStyleByContext)::DownCast(style->StylesValue ( j ));
         if (PSA.IsNull())
             continue;

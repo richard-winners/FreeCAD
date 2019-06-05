@@ -69,17 +69,17 @@ class ObjectPocket(PathAreaOp.ObjectOp):
         PathLog.track()
 
         # Pocket Properties
-        obj.addProperty("App::PropertyEnumeration", "CutMode", "Pocket", QtCore.QT_TRANSLATE_NOOP("App::Property", "The direction that the toolpath should go around the part ClockWise CW or CounterClockWise CCW"))
+        obj.addProperty("App::PropertyEnumeration", "CutMode", "Pocket", QtCore.QT_TRANSLATE_NOOP("App::Property", "The direction that the toolpath should go around the part ClockWise (CW) or CounterClockWise (CCW)"))
         obj.CutMode = ['Climb', 'Conventional']
         obj.addProperty("App::PropertyDistance", "ExtraOffset", "Pocket", QtCore.QT_TRANSLATE_NOOP("App::Property", "Extra offset to apply to the operation. Direction is operation dependent."))
         obj.addProperty("App::PropertyEnumeration", "StartAt", "Pocket", QtCore.QT_TRANSLATE_NOOP("App::Property", "Start pocketing at center or boundary"))
         obj.StartAt = ['Center', 'Edge']
         obj.addProperty("App::PropertyPercent", "StepOver", "Pocket", QtCore.QT_TRANSLATE_NOOP("App::Property", "Percent of cutter diameter to step over on each pass"))
         obj.addProperty("App::PropertyFloat", "ZigZagAngle", "Pocket", QtCore.QT_TRANSLATE_NOOP("App::Property", "Angle of the zigzag pattern"))
-        obj.addProperty("App::PropertyEnumeration", "OffsetPattern", "Face", QtCore.QT_TRANSLATE_NOOP("App::Property", "clearing pattern to use"))
+        obj.addProperty("App::PropertyEnumeration", "OffsetPattern", "Face", QtCore.QT_TRANSLATE_NOOP("App::Property", "Clearing pattern to use"))
         obj.OffsetPattern = ['ZigZag', 'Offset', 'Spiral', 'ZigZagOffset', 'Line', 'Grid', 'Triangle']
         obj.addProperty("App::PropertyBool", "MinTravel", "Pocket", QtCore.QT_TRANSLATE_NOOP("App::Property", "Use 3D Sorting of Path"))
-        obj.addProperty("App::PropertyBool", "KeepToolDown", "Face", QtCore.QT_TRANSLATE_NOOP("App::Property", "Attempts to avoid unnecessary retractions."))
+        obj.addProperty("App::PropertyBool", "KeepToolDown", "Pocket", QtCore.QT_TRANSLATE_NOOP("App::Property", "Attempts to avoid unnecessary retractions."))
 
         self.initPocketOp(obj)
 
@@ -132,3 +132,11 @@ class ObjectPocket(PathAreaOp.ObjectOp):
             params['threshold'] = self.radius * 2
         return params
 
+def SetupProperties():
+    setup = []
+    setup.append('CutMode')
+    setup.append('ExtraOffset')
+    setup.append('StepOver')
+    setup.append('ZigZagAngle')
+    setup.append('OffsetPattern')
+    return setup

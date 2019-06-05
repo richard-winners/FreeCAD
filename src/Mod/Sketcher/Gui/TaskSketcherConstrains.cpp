@@ -137,6 +137,7 @@ public:
             case Sketcher::DistanceX:
             case Sketcher::DistanceY:
             case Sketcher::Radius:
+            case Sketcher::Diameter:
             case Sketcher::Angle:
                 name = QString::fromLatin1("%1 (%2)").arg(name).arg(constraint->getPresentationValue().getUserString());
                 break;
@@ -157,41 +158,59 @@ public:
             default:
                 break;
             }
+
+            ParameterGrp::handle hGrp = App::GetApplication().GetParameterGroupByPath("User parameter:BaseApp/Preferences/Mod/Sketcher");
+            bool extended = hGrp->GetBool("ExtendedConstraintInformation",false);
+
+            if(extended) {
+                if(constraint->Second == Sketcher::Constraint::GeoUndef) {
+                    name = QString::fromLatin1("%1 [(%2,%3)]").arg(name).arg(constraint->First).arg(constraint->FirstPos);
+                }
+                else if(constraint->Third == Sketcher::Constraint::GeoUndef) {
+                    name = QString::fromLatin1("%1 [(%2,%3),(%4,%5)]").arg(name).arg(constraint->First).arg(constraint->FirstPos).arg(constraint->Second).arg(constraint->SecondPos);
+                }
+                else {
+                    name = QString::fromLatin1("%1 [(%2,%3),(%4,%5),(%6,%7)]").arg(name).arg(constraint->First).arg(constraint->FirstPos).arg(constraint->Second).arg(constraint->SecondPos).arg(constraint->Third).arg(constraint->ThirdPos);
+                }
+            }
+
             return name;
         }
         else if (role == Qt::DecorationRole) {
-            static QIcon hdist( Gui::BitmapFactory().pixmap("Constraint_HorizontalDistance") );
-            static QIcon vdist( Gui::BitmapFactory().pixmap("Constraint_VerticalDistance") );
-            static QIcon horiz( Gui::BitmapFactory().pixmap("Constraint_Horizontal") );
-            static QIcon vert ( Gui::BitmapFactory().pixmap("Constraint_Vertical") );
-            static QIcon lock ( Gui::BitmapFactory().pixmap("Sketcher_ConstrainLock") );
-            static QIcon block ( Gui::BitmapFactory().pixmap("Sketcher_ConstrainBlock") );
-            static QIcon coinc( Gui::BitmapFactory().pixmap("Constraint_PointOnPoint") );
-            static QIcon para ( Gui::BitmapFactory().pixmap("Constraint_Parallel") );
-            static QIcon perp ( Gui::BitmapFactory().pixmap("Constraint_Perpendicular") );
-            static QIcon tang ( Gui::BitmapFactory().pixmap("Constraint_Tangent") );
-            static QIcon dist ( Gui::BitmapFactory().pixmap("Constraint_Length") );
-            static QIcon radi ( Gui::BitmapFactory().pixmap("Constraint_Radius") );
-            static QIcon majradi ( Gui::BitmapFactory().pixmap("Constraint_Ellipse_Major_Radius") );
-            static QIcon minradi ( Gui::BitmapFactory().pixmap("Constraint_Ellipse_Minor_Radius") );
-            static QIcon angl ( Gui::BitmapFactory().pixmap("Constraint_InternalAngle") );
-            static QIcon ellipseXUAngl ( Gui::BitmapFactory().pixmap("Constraint_Ellipse_Axis_Angle") );
-            static QIcon equal( Gui::BitmapFactory().pixmap("Constraint_EqualLength") );
-            static QIcon pntoo( Gui::BitmapFactory().pixmap("Constraint_PointOnObject") );
-            static QIcon symm ( Gui::BitmapFactory().pixmap("Constraint_Symmetric") );
-            static QIcon snell ( Gui::BitmapFactory().pixmap("Constraint_SnellsLaw") );
-            static QIcon iaellipseminoraxis ( Gui::BitmapFactory().pixmap("Constraint_InternalAlignment_Ellipse_MinorAxis") );
-            static QIcon iaellipsemajoraxis ( Gui::BitmapFactory().pixmap("Constraint_InternalAlignment_Ellipse_MajorAxis") );
-            static QIcon iaellipsefocus1 ( Gui::BitmapFactory().pixmap("Constraint_InternalAlignment_Ellipse_Focus1") );
-            static QIcon iaellipsefocus2 ( Gui::BitmapFactory().pixmap("Constraint_InternalAlignment_Ellipse_Focus2") );
-            static QIcon iaellipseother ( Gui::BitmapFactory().pixmap("Constraint_InternalAlignment") );
+            static QIcon hdist( Gui::BitmapFactory().iconFromTheme("Constraint_HorizontalDistance") );
+            static QIcon vdist( Gui::BitmapFactory().iconFromTheme("Constraint_VerticalDistance") );
+            static QIcon horiz( Gui::BitmapFactory().iconFromTheme("Constraint_Horizontal") );
+            static QIcon vert ( Gui::BitmapFactory().iconFromTheme("Constraint_Vertical") );
+          //static QIcon lock ( Gui::BitmapFactory().iconFromTheme("Sketcher_ConstrainLock") );
+            static QIcon block ( Gui::BitmapFactory().iconFromTheme("Sketcher_ConstrainBlock") );
+            static QIcon coinc( Gui::BitmapFactory().iconFromTheme("Constraint_PointOnPoint") );
+            static QIcon para ( Gui::BitmapFactory().iconFromTheme("Constraint_Parallel") );
+            static QIcon perp ( Gui::BitmapFactory().iconFromTheme("Constraint_Perpendicular") );
+            static QIcon tang ( Gui::BitmapFactory().iconFromTheme("Constraint_Tangent") );
+            static QIcon dist ( Gui::BitmapFactory().iconFromTheme("Constraint_Length") );
+            static QIcon radi ( Gui::BitmapFactory().iconFromTheme("Constraint_Radius") );
+            static QIcon dia ( Gui::BitmapFactory().iconFromTheme("Constraint_Diameter") );
+          //static QIcon majradi ( Gui::BitmapFactory().iconFromTheme("Constraint_Ellipse_Major_Radius") );
+          //static QIcon minradi ( Gui::BitmapFactory().iconFromTheme("Constraint_Ellipse_Minor_Radius") );
+            static QIcon angl ( Gui::BitmapFactory().iconFromTheme("Constraint_InternalAngle") );
+          //static QIcon ellipseXUAngl ( Gui::BitmapFactory().iconFromTheme("Constraint_Ellipse_Axis_Angle") );
+            static QIcon equal( Gui::BitmapFactory().iconFromTheme("Constraint_EqualLength") );
+            static QIcon pntoo( Gui::BitmapFactory().iconFromTheme("Constraint_PointOnObject") );
+            static QIcon symm ( Gui::BitmapFactory().iconFromTheme("Constraint_Symmetric") );
+            static QIcon snell ( Gui::BitmapFactory().iconFromTheme("Constraint_SnellsLaw") );
+            static QIcon iaellipseminoraxis ( Gui::BitmapFactory().iconFromTheme("Constraint_InternalAlignment_Ellipse_MinorAxis") );
+            static QIcon iaellipsemajoraxis ( Gui::BitmapFactory().iconFromTheme("Constraint_InternalAlignment_Ellipse_MajorAxis") );
+            static QIcon iaellipsefocus1 ( Gui::BitmapFactory().iconFromTheme("Constraint_InternalAlignment_Ellipse_Focus1") );
+            static QIcon iaellipsefocus2 ( Gui::BitmapFactory().iconFromTheme("Constraint_InternalAlignment_Ellipse_Focus2") );
+            static QIcon iaellipseother ( Gui::BitmapFactory().iconFromTheme("Constraint_InternalAlignment") );
 
-            static QIcon hdist_driven ( Gui::BitmapFactory().pixmap("Constraint_HorizontalDistance_Driven") );
-            static QIcon vdist_driven( Gui::BitmapFactory().pixmap("Constraint_VerticalDistance_Driven") );
-            static QIcon dist_driven ( Gui::BitmapFactory().pixmap("Constraint_Length_Driven") );
-            static QIcon radi_driven ( Gui::BitmapFactory().pixmap("Constraint_Radius_Driven") );
-            static QIcon angl_driven ( Gui::BitmapFactory().pixmap("Constraint_InternalAngle_Driven") );
-            static QIcon snell_driven ( Gui::BitmapFactory().pixmap("Constraint_SnellsLaw_Driven") );
+            static QIcon hdist_driven ( Gui::BitmapFactory().iconFromTheme("Constraint_HorizontalDistance_Driven") );
+            static QIcon vdist_driven( Gui::BitmapFactory().iconFromTheme("Constraint_VerticalDistance_Driven") );
+            static QIcon dist_driven ( Gui::BitmapFactory().iconFromTheme("Constraint_Length_Driven") );
+            static QIcon radi_driven ( Gui::BitmapFactory().iconFromTheme("Constraint_Radius_Driven") );
+            static QIcon dia_driven ( Gui::BitmapFactory().iconFromTheme("Constraint_Diameter_Driven") );
+            static QIcon angl_driven ( Gui::BitmapFactory().iconFromTheme("Constraint_InternalAngle_Driven") );
+            static QIcon snell_driven ( Gui::BitmapFactory().iconFromTheme("Constraint_SnellsLaw_Driven") );
 
             switch(constraint->Type){
             case Sketcher::Horizontal:
@@ -222,6 +241,8 @@ public:
                 return constraint->isDriving ? vdist : vdist_driven;
             case Sketcher::Radius:
                 return constraint->isDriving ? radi : radi_driven;
+            case Sketcher::Diameter:
+                return constraint->isDriving ? dia : dia_driven;                
             case Sketcher::Angle:
                 return constraint->isDriving ? angl : angl_driven;
             case Sketcher::SnellsLaw:
@@ -287,6 +308,7 @@ public:
         case Sketcher::DistanceX:
         case Sketcher::DistanceY:
         case Sketcher::Radius:
+        case Sketcher::Diameter:
         case Sketcher::Angle:
         case Sketcher::SnellsLaw:
             return ( constraint->First >= 0 || constraint->Second >= 0 || constraint->Third >= 0 );
@@ -294,6 +316,12 @@ public:
             return true;
         }
         return false;
+    }
+
+    bool isDimensional() const {
+        assert(ConstraintNbr >= 0 && ConstraintNbr < sketch->Constraints.getSize());
+
+        return (sketch->Constraints[ConstraintNbr])->isDimensional();
     }
 
     bool isDriving() const {
@@ -356,7 +384,9 @@ protected:
         App::ObjectIdentifier path = item->sketch->Constraints.createPath(item->ConstraintNbr);
         App::PropertyExpressionEngine::ExpressionInfo expr_info = item->sketch->getExpression(path);
 
-        if (item->sketch->Constraints[item->ConstraintNbr]->isDriving && expr_info.expression) {
+        // in case the constraint property is invalidated it returns a null pointer
+        const Sketcher::Constraint* constraint = item->sketch->Constraints[item->ConstraintNbr];
+        if (constraint && constraint->isDriving && expr_info.expression) {
             // Paint pixmap
             int s = 2 * options.rect.height() / 4;
             int margin = s;
@@ -398,12 +428,7 @@ void ConstraintView::contextMenuEvent (QContextMenuEvent* event)
     ConstraintItem *it = dynamic_cast<ConstraintItem*>(item);
     if (it) {
         // if its the right constraint
-        if ((it->constraintType() == Sketcher::Distance ||
-             it->constraintType() == Sketcher::DistanceX ||
-             it->constraintType() == Sketcher::DistanceY ||
-             it->constraintType() == Sketcher::Radius ||
-             it->constraintType() == Sketcher::Angle ||
-             it->constraintType() == Sketcher::SnellsLaw)) {
+        if (it->isDimensional()) {
 
             isQuantity = true;
             if (it->isEnforceable())
@@ -594,7 +619,11 @@ TaskSketcherConstrains::TaskSketcherConstrains(ViewProviderSketch *sketchView)
     QObject::connect(
         ui->filterInternalAlignment, SIGNAL(stateChanged(int)),
         this                     , SLOT  (on_filterInternalAlignment_stateChanged(int))
-    );
+        );
+    QObject::connect(
+        ui->extendedInformation, SIGNAL(stateChanged(int)),
+                     this                     , SLOT  (on_extendedInformation_stateChanged(int))
+        );
 
     connectionConstraintsChanged = sketchView->signalConstraintsChanged.connect(
         boost::bind(&SketcherGui::TaskSketcherConstrains::slotConstraintsChanged, this));
@@ -602,6 +631,7 @@ TaskSketcherConstrains::TaskSketcherConstrains(ViewProviderSketch *sketchView)
     this->groupLayout()->addWidget(proxy);
 
     this->ui->filterInternalAlignment->onRestore();
+    this->ui->extendedInformation->onRestore();
 
     slotConstraintsChanged();
 }
@@ -609,6 +639,7 @@ TaskSketcherConstrains::TaskSketcherConstrains(ViewProviderSketch *sketchView)
 TaskSketcherConstrains::~TaskSketcherConstrains()
 {
     this->ui->filterInternalAlignment->onSave();
+    this->ui->extendedInformation->onSave();
     connectionConstraintsChanged.disconnect();
     delete ui;
 }
@@ -667,6 +698,13 @@ void TaskSketcherConstrains::on_filterInternalAlignment_stateChanged(int state)
     slotConstraintsChanged();
 }
 
+void TaskSketcherConstrains::on_extendedInformation_stateChanged(int state)
+{
+    Q_UNUSED(state);
+    this->ui->extendedInformation->onSave();
+    slotConstraintsChanged();
+}
+
 void TaskSketcherConstrains::on_listWidgetConstraints_emitCenterSelectedItems()
 {
     sketchView->centerSelection();
@@ -694,12 +732,7 @@ void TaskSketcherConstrains::on_listWidgetConstraints_itemActivated(QListWidgetI
     if (!it) return;
 
     // if its the right constraint
-    if (it->constraintType() == Sketcher::Distance ||
-        it->constraintType() == Sketcher::DistanceX ||
-        it->constraintType() == Sketcher::DistanceY ||
-        it->constraintType() == Sketcher::Radius ||
-        it->constraintType() == Sketcher::Angle ||
-        it->constraintType() == Sketcher::SnellsLaw) {
+    if (it->isDimensional()) {
 
         EditDatumDialog *editDatumDialog = new EditDatumDialog(this->sketchView, it->ConstraintNbr);
         editDatumDialog->exec(false);
@@ -830,7 +863,7 @@ void TaskSketcherConstrains::slotConstraintsChanged(void)
         bool showDatums = (Filter < 3);
         bool showNamed = (Filter == 3 && !(constraint->Name.empty()));
         bool showNonDriving = (Filter == 4 && !constraint->isDriving);
-        bool hideInternalAligment = this->ui->filterInternalAlignment->isChecked();
+        bool hideInternalAlignment = this->ui->filterInternalAlignment->isChecked();
 
         switch(constraint->Type) {
         case Sketcher::Horizontal:
@@ -849,12 +882,13 @@ void TaskSketcherConstrains::slotConstraintsChanged(void)
         case Sketcher::DistanceX:
         case Sketcher::DistanceY:
         case Sketcher::Radius:
+        case Sketcher::Diameter:
         case Sketcher::Angle:
         case Sketcher::SnellsLaw:
             visible = (showDatums || showNamed || showNonDriving);
             break;
         case Sketcher::InternalAlignment:
-            visible = ((showNormal || showNamed) && !hideInternalAligment);
+            visible = ((showNormal || showNamed) && !hideInternalAlignment);
         default:
             break;
         }

@@ -66,14 +66,14 @@ void CreateTestCommands(void);
 
 
 /** The CommandBase class
- * This lightweigt class is the base class of all commands in FreeCAD. It represents the link between the FreeCAD
+ * This lightweight class is the base class of all commands in FreeCAD. It represents the link between the FreeCAD
  * command framework and the QAction world of Qt.
  * @author Werner Mayer
  */
-class GuiExport CommandBase 
+class GuiExport CommandBase
 {
 protected:
-    CommandBase(const char* sMenu, const char* sToolTip=0, const char* sWhat=0, 
+    CommandBase(const char* sMenu, const char* sToolTip=0, const char* sWhat=0,
                 const char* sStatus=0, const char* sPixmap=0, const char* sAccel=0);
     virtual ~CommandBase();
 
@@ -121,8 +121,8 @@ public:
 protected:
     /** @name Attributes set by the inherited constructor.
      *
-     *  They set up the most important properties  of the command.
-     *  In the constructor are set default values. 
+     *  They set up the most important properties of the command.
+     *  In the constructor are set default values.
      *  The real values should be set in the constructor of the inheriting class.
      */
     //@{
@@ -508,21 +508,21 @@ public:
     bool addTo(const char* Name, QWidget* pcWidget);
 
     /** Returns all commands of a special App Module
-     *  delivers a vector of all comands in the given application module. When no 
+     *  delivers a vector of all commands in the given application module. When no 
      *  name is given the standard commands (build in ) are returned.
      *  @see Command
      */
     std::vector <Command*> getModuleCommands(const char *sModName) const;
 
     /** Returns all commands registered in the manager
-     *  delivers a vector of all comands. If you intereted in commands of
+     *  delivers a vector of all commands. If you intereted in commands of
      *  of a special app module use GetModuleCommands()
      *  @see Command
      */
     std::vector <Command*> getAllCommands(void) const;
 
     /** Returns all commands of a group
-     *  delivers a vector of all comands in the given group.
+     *  delivers a vector of all commands in the given group.
      */
     std::vector <Command*> getGroupCommands(const char *sGrpName) const;
 

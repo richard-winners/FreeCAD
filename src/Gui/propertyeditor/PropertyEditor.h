@@ -81,6 +81,9 @@ public:
     QColor groupTextColor() const;
     void setGroupTextColor(const QColor& c);
 
+public Q_SLOTS:
+    void onItemActivated(const QModelIndex &index);
+
 protected:
     virtual void closeEditor (QWidget * editor, QAbstractItemDelegate::EndEditHint hint);
     virtual void commitData (QWidget * editor);
@@ -89,6 +92,7 @@ protected:
     virtual void rowsInserted (const QModelIndex & parent, int start, int end);
     virtual void drawBranches(QPainter *painter, const QRect &rect, const QModelIndex &index) const;
     virtual QStyleOptionViewItem viewOptions() const;
+    virtual bool event(QEvent*);
 
 private:
     void setEditorMode(const QModelIndex & parent, int start, int end);

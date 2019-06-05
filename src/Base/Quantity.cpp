@@ -23,12 +23,16 @@
 #include "PreCompiled.h"
 #ifndef _PreComp_
 # include <sstream>
+# ifdef FC_OS_WIN32
+# define _USE_MATH_DEFINES
+# endif // FC_OS_WIN32
+# include <cmath>
 #endif
 
-#include <cmath>
 #include "Quantity.h"
 #include "Exception.h"
 #include "UnitsApi.h"
+#include "Console.h"
 
 // suppress annoying warnings from generated source files
 #ifdef _MSC_VER
@@ -41,10 +45,15 @@
 
 using namespace Base;
 
+// ====== Static attributes =========================
+int QuantityFormat::defaultDenominator = 8; // for 1/8"
+
+
 QuantityFormat::QuantityFormat()
-  : option(static_cast<NumberOption>(OmitGroupSeparator | RejectGroupSeparator))
+  : option(OmitGroupSeparator | RejectGroupSeparator)
   , format(Fixed)
   , precision(UnitsApi::getDecimals())
+  , denominator(defaultDenominator)
 {
 }
 
@@ -297,6 +306,8 @@ Quantity Quantity::WattSecond       (1e+6          ,Unit(2,1,-2));  // Joule (kg
 Quantity Quantity::KMH              (277.778       ,Unit(1,0,-1));  // km/h
 Quantity Quantity::MPH              (447.04        ,Unit(1,0,-1));  // Mile/h
 
+Quantity Quantity::AngMinute        (1.0/60.0      ,Unit(0,0,0,0,0,0,0,1)); // angular minute
+Quantity Quantity::AngSecond        (1.0/3600.0    ,Unit(0,0,0,0,0,0,0,1)); // angular minute
 Quantity Quantity::Degree           (1.0           ,Unit(0,0,0,0,0,0,0,1)); // degree         (internal standard angle)
 Quantity Quantity::Radian           (180/M_PI      ,Unit(0,0,0,0,0,0,0,1)); // radian
 Quantity Quantity::Gon              (360.0/400.0   ,Unit(0,0,0,0,0,0,0,1)); // gon

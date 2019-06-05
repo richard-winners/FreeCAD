@@ -290,7 +290,7 @@ GCODE_FOOTER = "M30"
 
 linenr = 0  # variable has to be global because it is used by linenumberify and export
 
-if open.__module__ == '__builtin__':
+if open.__module__ in ['__builtin__','io']:
     pythonopen = open
 
 
@@ -531,6 +531,6 @@ def export(objectslist, filename, argstring):
     gcode += linenumberify(GCODE_FOOTER)
     if SHOW_EDITOR:
         PostUtils.editor(gcode)
-    gfile = pythonopen(filename, "wb")
+    gfile = pythonopen(filename, "w")
     gfile.write(gcode)
     gfile.close()

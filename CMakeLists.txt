@@ -1,16 +1,15 @@
+cmake_minimum_required(VERSION 3.3 FATAL_ERROR)
 project(FreeCAD_trunk)
 
 set(PACKAGE_NAME "FreeCAD")
 set(PACKAGE_VERSION_NAME "Vulcan")
 set(PACKAGE_VERSION_MAJOR "0")
-set(PACKAGE_VERSION_MINOR "17")
-set(PACKAGE_VERSION_PATCH "10000")
+set(PACKAGE_VERSION_MINOR "19")
+set(PACKAGE_VERSION_PATCH "16100")
 
 set(FREECAD_VERSION "${PACKAGE_VERSION_MAJOR}.${PACKAGE_VERSION_MINOR}")
 set(PACKAGE_VERSION "${PACKAGE_VERSION_MAJOR}.${PACKAGE_VERSION_MINOR}.${PACKAGE_VERSION_PATCH}")
 set(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
-
-cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 
 if(COMMAND cmake_policy)
     cmake_policy(SET CMP0003 NEW)
@@ -19,11 +18,14 @@ if(COMMAND cmake_policy)
     endif(POLICY CMP0020)
     # added in cmake 3.0
     if(POLICY CMP0050)
-        cmake_policy(SET CMP0050 OLD)
+        cmake_policy(SET CMP0050 NEW)
     endif(POLICY CMP0050)
     if (POLICY CMP0045)
         cmake_policy(SET CMP0045 NEW)
     endif(POLICY CMP0045)
+    if (POLICY CMP0072)
+        cmake_policy(SET CMP0072 OLD)
+    endif(POLICY CMP0072)
 endif(COMMAND cmake_policy)
 
 find_program(CCACHE_PROGRAM ccache)  #This check should occur before project()
@@ -46,14 +48,6 @@ set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cMake")
 #   set(DEBUG_MAIN_OUTPUT_PATH ${CMAKE_BINARY_DIR}/src/Main/Debug)
 #   set(RELEASE_MAIN_OUTPUT_PATH ${CMAKE_BINARY_DIR}/src/Main/Release)
 #endif(CMAKE_CFG_INTDIR STREQUAL .)
-
-if(WIN32)
-    set(PLATFORM_CP xcopy /Y /S)
-    set(PLATFORM_MK mkdir)
-else(WIN32)
-    set(PLATFORM_CP cp)
-    set(PLATFORM_MK mkdir -p)
-endif(WIN32)
 
 if (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
     set(CMAKE_COMPILER_IS_CLANGXX TRUE)
@@ -79,6 +73,7 @@ IF(FREECAD_VERSION VERSION_GREATER 0.16)
                  "C++11"
                  "C++14"
                  "C++17"
+                 "C++20"
     )
 
     IF(CMAKE_COMPILER_IS_GNUCXX AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.7)
@@ -97,12 +92,14 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANGXX)
     add_definitions(-DHAVE_CONFIG_H)
 
     # Escape the two plus chars as otherwise cmake complains about invalid regex
-    if(${BUILD_ENABLE_CXX_STD} MATCHES "C\\+\\+17")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+    if(${BUILD_ENABLE_CXX_STD} MATCHES "C\\+\\+20")
+        set(CMAKE_CXX_STANDARD 20)
+    elseif(${BUILD_ENABLE_CXX_STD} MATCHES "C\\+\\+17")
+        set(CMAKE_CXX_STANDARD 17)
     elseif(${BUILD_ENABLE_CXX_STD} MATCHES "C\\+\\+14")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+        set(CMAKE_CXX_STANDARD 14)
     elseif (${BUILD_ENABLE_CXX_STD} MATCHES "C\\+\\+11")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+        set(CMAKE_CXX_STANDARD 11)
     endif()
 
     set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wno-write-strings ${CMAKE_CXX_FLAGS}")
@@ -110,9 +107,9 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANGXX)
 
     # get linker errors as soon as possible and not at runtime e.g. for modules
     if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-        set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-undefined,error")
+        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-undefined,error")
     elseif(UNIX)
-        set(CMAKE_SHARED_LINKER_FLAGS "-Wl,--no-undefined")
+        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
     endif()
 endif(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANGXX)
 
@@ -149,7 +146,7 @@ endif(WIN32)
 SET(CMAKE_INSTALL_DATADIR data CACHE PATH "Output directory for data and resource files")
 SET(CMAKE_INSTALL_INCLUDEDIR include CACHE PATH "Output directory for header files")
 SET(CMAKE_INSTALL_DOCDIR doc CACHE PATH "Output directory for documentation and license files")
-# Don't set it without manual adaption of LibDir variable in src/App/FreeCADInit.py
+# Don't set it without manual adoption of LibDir variable in src/App/FreeCADInit.py
 SET(CMAKE_INSTALL_LIBDIR lib CACHE PATH "Output directory for libraries")
 
 if(NOT WIN32)
@@ -174,14 +171,27 @@ MESSAGE(STATUS "datadir: ${CMAKE_INSTALL_DATADIR}")
 MESSAGE(STATUS "docdir: ${CMAKE_INSTALL_DOCDIR}")
 MESSAGE(STATUS "includedir: ${CMAKE_INSTALL_INCLUDEDIR}")
 MESSAGE(STATUS "libdir: ${CMAKE_INSTALL_LIBDIR}")
+MESSAGE(STATUS "cmake: ${CMAKE_VERSION}")
 
 # ==============================================================================
 # == Win32 is default behaviour use the LibPack copied in Source tree ==========
 if(MSVC)
-    OPTION(FREECAD_RELEASE_PDB "Create PDB file for Release version." OFF)
+    OPTION(FREECAD_RELEASE_PDB "Create PDB files for Release version." ON)
+    OPTION(FREECAD_RELEASE_SEH "Enable Structured Exception Handling for Release version." ON)
     OPTION(FREECAD_LIBPACK_USE "Use the LibPack to Build FreeCAD (only Win32 so far)." ON)
     OPTION(FREECAD_LIBPACK_USEPYSIDE "Use PySide in LibPack rather to PyQt and Swig." ON)
-    set(FREECAD_LIBPACK_DIR ${CMAKE_SOURCE_DIR} CACHE PATH  "Directory of the FreeCAD LibPack")
+    IF(DEFINED ENV{FREECAD_LIBPACK_DIR})
+      set(FREECAD_LIBPACK_DIR $ENV{FREECAD_LIBPACK_DIR} CACHE PATH  "Directory of the FreeCAD LibPack")
+      MESSAGE(STATUS "Found libpack env variable: ${FREECAD_LIBPACK_DIR}")
+      IF(EXISTS ${FREECAD_LIBPACK_DIR}/lib/Qt5Core.lib)
+        OPTION(BUILD_QT5 "Build with Qt5." ON)
+      ELSE()
+        OPTION(BUILD_QT5 "Build with Qt5." OFF)
+      ENDIF()
+    ELSE()
+        set(FREECAD_LIBPACK_DIR ${CMAKE_SOURCE_DIR} CACHE PATH  "Directory of the FreeCAD LibPack")
+    ENDIF()
+    OPTION(BUILD_USE_PCH "Activate precompiled headers where it's used." ON)
 else(MSVC)
     OPTION(FREECAD_LIBPACK_USE "Use the LibPack to Build FreeCAD (only Win32 so far)." OFF)
     set(FREECAD_LIBPACK_DIR ""  CACHE PATH  "Directory of the FreeCAD LibPack")
@@ -192,14 +202,14 @@ endif(MSVC)
 
 # Switch to build FreeCAD with Qt5
 OPTION(BUILD_QT5 "Build with Qt5." OFF)
-OPTION(BUILD_QT5_WEBKIT "Build with Qt5." ON)
 OPTION(BUILD_GUI "Build FreeCAD Gui. Otherwise you have only the command line and the Python import module." ON)
-OPTION(FREECAD_MAINTAINERS_BUILD "Build FreeCAD for Maintainers, with Docu and 3rd party libs. On Windows the Installer is built." OFF)
 OPTION(FREECAD_USE_EXTERNAL_ZIPIOS "Use system installed zipios++ instead of the bundled." OFF)
 OPTION(FREECAD_USE_EXTERNAL_SMESH "Use system installed smesh instead of the bundled." OFF)
 OPTION(FREECAD_USE_EXTERNAL_KDL "Use system installed orocos-kdl instead of the bundled." OFF)
 OPTION(FREECAD_USE_FREETYPE "Builds the features using FreeType libs" ON)
 OPTION(FREECAD_BUILD_DEBIAN "Prepare for a build of a Debian package" OFF)
+OPTION(BUILD_WITH_CONDA "Set ON if you build freecad with conda" OFF)
+OPTION(OCCT_CMAKE_FALLBACK "disable usage of occt-config files" OFF)
 if (WIN32 OR APPLE)
     OPTION(FREECAD_USE_QT_FILEDIALOG "Use Qt's file dialog instead of the native one." OFF)
 else()
@@ -218,6 +228,12 @@ if (BUILD_QT5)
   if (FREECAD_USE_QTOPENGL_WIDGET)
     set(HAVE_QT5_OPENGL 1)
   endif()
+  set(FREECAD_USE_QTWEBMODULE "Automatic"  CACHE STRING  "Qt Webkit or Qt WebEngine")
+  set_property(CACHE FREECAD_USE_QTWEBMODULE PROPERTY STRINGS
+               "Automatic"
+               "Qt Webkit"
+               "Qt WebEngine"
+  )
 endif()
 configure_file(${CMAKE_SOURCE_DIR}/src/QtOpenGL.h.cmake ${CMAKE_BINARY_DIR}/src/QtOpenGL.h)
 
@@ -262,6 +278,7 @@ OPTION(BUILD_JTREADER "Build the FreeCAD jt reader module" OFF)
 OPTION(BUILD_MATERIAL "Build the FreeCAD material module" ON)
 OPTION(BUILD_MESH "Build the FreeCAD mesh module" ON)
 OPTION(BUILD_MESH_PART "Build the FreeCAD mesh part module" ON)
+OPTION(BUILD_FLAT_MESH "Build the FreeCAD flat mesh module" OFF)
 OPTION(BUILD_OPENSCAD "Build the FreeCAD openscad module" ON)
 OPTION(BUILD_PART "Build the FreeCAD part module" ON)
 OPTION(BUILD_PART_DESIGN "Build the FreeCAD part design module" ON)
@@ -343,6 +360,7 @@ REQUIRES_MODS(BUILD_IMPORT             BUILD_PART)
 REQUIRES_MODS(BUILD_INSPECTION         BUILD_MESH BUILD_POINTS BUILD_PART)
 REQUIRES_MODS(BUILD_JTREADER           BUILD_MESH)
 REQUIRES_MODS(BUILD_MESH_PART          BUILD_PART BUILD_MESH BUILD_SMESH)
+REQUIRES_MODS(BUILD_FLAT_MESH          BUILD_MESH_PART)
 REQUIRES_MODS(BUILD_OPENSCAD           BUILD_MESH_PART BUILD_DRAFT)
 REQUIRES_MODS(BUILD_PART_DESIGN        BUILD_SKETCHER)
 REQUIRES_MODS(BUILD_PATH               BUILD_PART BUILD_ROBOT)
@@ -381,16 +399,6 @@ if(FREECAD_LIBPACK_USE)
     IF(FREECAD_LIBPACK_CHECKFILE_CLBUNDLER)
         set(FREECAD_LIBPACK_VERSION "CLbundler" CACHE STRING "Displays if the libpack has been found" FORCE)
         include(cMake/UseLibPackCLbundler.cmake)
-    ELSEIF(FREECAD_LIBPACK_CHECKFILE6X)
-        set(FREECAD_LIBPACK_VERSION "6.x" CACHE STRING "Displays if the libpack has been found" FORCE)
-        include(cMake/UseLibPack6x.cmake)
-    ELSEIF(FREECAD_LIBPACK_CHECKFILE7X)
-        set(FREECAD_LIBPACK_VERSION "7.x" CACHE STRING "Displays if the libpack has been found" FORCE)
-        include(cMake/UseLibPack7x.cmake)
-    ELSEIF(FREECAD_LIBPACK_CHECKFILE8X)
-        set(FREECAD_LIBPACK_VERSION "8.x" CACHE STRING "Displays if the libpack has been found" FORCE)
-        include(cMake/UseLibPack8x.cmake)
-        set(SWIG_EXECUTABLE ${FREECAD_LIBPACK_DIR}/tools/swigwin-1.3.40/swig.exe CACHE STRING "Swig" FORCE)
     ELSEIF(FREECAD_LIBPACK_CHECKFILE9X)
         set(FREECAD_LIBPACK_VERSION "9.x" CACHE STRING "Displays if the libpack has been found" FORCE)
         include(cMake/UseLibPack9x.cmake)
@@ -448,7 +456,7 @@ if(NOT FREECAD_LIBPACK_USE OR FREECAD_LIBPACK_CHECKFILE_CLBUNDLER)
 set(Python_ADDITIONAL_VERSIONS "2.7")
 
 # For building on OS X
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT BUILD_WITH_CONDA)
 
     # If the user doesn't tell us which package manager they're using
     if(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
@@ -558,7 +566,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     endif(NOT DEFINED PYTHON_LIBRARY)
 
 
-endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT BUILD_WITH_CONDA)
 
     find_package(PythonInterp REQUIRED)
     set(Python_ADDITIONAL_VERSIONS ${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR})
@@ -583,29 +591,47 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     ENDIF(NOT PYTHONLIBS_FOUND)
 
 # -------------------------------- pcl ----------------------------------
-    #PCL needs to be found before boost because the PCLConfig also calls find_package(Boost ...),
-    #but with different components
+# Can be used by ReverseEngineering module"
+#
+# PCL needs to be found before boost because the PCLConfig also calls find_package(Boost ...),
+# but with different components
     if(FREECAD_USE_PCL)
         find_package(PCL REQUIRED COMPONENTS common kdtree features surface io filters segmentation sample_consensus)
     endif(FREECAD_USE_PCL)
 
+# -------------------------------- PyBind11 -----------------------------
+# necessary for flat-mesh feature
+OPTION(FREECAD_USE_PYBIND11 "Use pybind11" OFF)
+if (FREECAD_USE_PYBIND11)
+    find_package(pybind11 REQUIRED)
+endif()
 # -------------------------------- Boost --------------------------------
 
     SET(_boost_TEST_VERSIONS ${Boost_ADDITIONAL_VERSIONS})
 
+    set (BOOST_COMPONENTS filesystem program_options regex system thread)
     find_package(Boost ${BOOST_MIN_VERSION}
-        COMPONENTS filesystem program_options regex signals system thread REQUIRED)
+        COMPONENTS ${BOOST_COMPONENTS} REQUIRED)
+
+    if(UNIX AND NOT APPLE)
+        # Boost.Thread 1.67+ headers reference pthread_condattr_*
+        list(APPEND Boost_LIBRARIES pthread)
+    endif()
 
     IF(NOT Boost_FOUND)
-        MESSAGE(FATAL_ERROR "========================================\n"
-                            "boost not found, install the components:\n"
-                            " * filesystem\n"
-                            " * program_options\n"
-                            " * regex\n"
-                            " * signals\n"
-                            " * system\n"
-                            " * thread\n"
-                            "========================================\n")
+        set (NO_BOOST_COMPONENTS)
+        foreach (comp ${BOOST_COMPONENTS})
+            string(TOUPPER ${comp} uppercomp)
+            if (NOT Boost_${uppercomp}_FOUND)
+                list(APPEND NO_BOOST_COMPONENTS ${comp})
+            endif()
+        endforeach()
+        MESSAGE(FATAL_ERROR "=============================================\n"
+                            "Required components:\n"
+                            " ${BOOST_COMPONENTS}\n"
+                            "Not found, install the components:\n"
+                            " ${NO_BOOST_COMPONENTS}\n"
+                            "=============================================\n")
     ENDIF(NOT Boost_FOUND)
 
 # -------------------------------- XercesC --------------------------------
@@ -638,6 +664,13 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
     # Salome SMESH sources are under src/3rdParty now
     IF(BUILD_SMESH)
+        # set the internal smesh version:
+        # see src/3rdParty/salomonemesh/CMakeLists.txt and commit https://github.com/FreeCAD/FreeCAD/commit/666a3e5 and https://forum.freecadweb.org/viewtopic.php?f=10&t=30838
+        set(SMESH_VERSION_MAJOR 7)
+        set(SMESH_VERSION_MINOR 7)
+        set(SMESH_VERSION_PATCH 1)
+        set(SMESH_VERSION_TWEAK 0)
+
         #if we use smesh we definitely also need vtk, no matter of external or internal smesh
         set (VTK_COMPONENTS
             vtkCommonCore
@@ -655,7 +688,7 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
         # check which modules are available
         if(UNIX OR WIN32)
             find_package(VTK COMPONENTS vtkCommonCore REQUIRED NO_MODULE)
-            list(APPEND VTK_COMPONENTS vtkIOMPIParallel vtkParallelMPI vtkhdf5)
+            list(APPEND VTK_COMPONENTS vtkIOMPIParallel vtkParallelMPI vtkhdf5 vtkFiltersParallelDIY2 vtkRenderingCore vtkInteractionStyle vtkRenderingFreeType vtkRenderingOpenGL2)
             foreach(_module ${VTK_COMPONENTS})
                 list (FIND VTK_MODULES_ENABLED ${_module} _index)
                 if (${_index} GREATER -1)
@@ -664,7 +697,7 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
             endforeach()
         endif()
 
-        # don't check VERSION 6 as this would exlude VERSION 7
+        # don't check VERSION 6 as this would exclude VERSION 7
         if(AVAILABLE_VTK_COMPONENTS)
             message(STATUS "VTK components: ${AVAILABLE_VTK_COMPONENTS}")
             find_package(VTK COMPONENTS ${AVAILABLE_VTK_COMPONENTS} REQUIRED NO_MODULE)
@@ -690,12 +723,23 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
         list(REMOVE_ITEM VTK_LIBRARIES "optimized" "debug")
 
         if(NOT FREECAD_USE_EXTERNAL_SMESH)
+            find_package(MEDFile REQUIRED)
             # See https://www.hdfgroup.org/HDF5/release/cmakebuild.html
             if (WIN32)
                 find_package(HDF5 COMPONENTS NO_MODULE REQUIRED static)
             else()
                 find_package(PkgConfig)
-                pkg_search_module(HDF5 hdf5-serial)
+		FILE(READ ${meddotH} TMPTXT)
+		STRING(FIND "${TMPTXT}" "#define MED_HAVE_MPI" matchres)
+		if(${matchres} EQUAL -1)
+			message(STATUS "We guess that libmed was built using hdf5-serial version")
+			set(HDF5_VARIANT "hdf5-serial")
+		else()
+			message(STATUS "We guess that libmed was built using hdf5-openmpi version")
+			set(HDF5_VARIANT "hdf5-openmpi")
+			set(HDF5_PREFER_PARALLEL TRUE) # if pkg-config fails, find_package(HDF5) needs this
+		endif()
+                pkg_search_module(HDF5 ${HDF5_VARIANT})
                 if(NOT HDF5_FOUND)
                     find_package(HDF5 REQUIRED)
                 else()
@@ -704,7 +748,7 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
                     link_libraries(${HDF5_LIBRARIES})
                     find_file(Hdf5dotH hdf5.h PATHS ${HDF5_INCLUDE_DIRS} NO_DEFAULT_PATH)
                     if(NOT Hdf5dotH)
-                        message( FATAL_ERROR "hdf5-serial not found in an error message above.")
+                        message( FATAL_ERROR "${HDF5_VARIANT} development header not found.")
                     endif()
                 endif()
                 check_include_file_cxx(hdf5.h HDF5_FOUND)
@@ -722,10 +766,12 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
                     message( WARNING "mpi.h was not found. Check for error above.")
                 endif()
             endif()
-            find_package(MEDFile REQUIRED)
             set(SMESH_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/src/3rdParty/salomesmesh/inc)
-        else()
-            find_package(SMESH)
+
+        else(NOT FREECAD_USE_EXTERNAL_SMESH)
+            find_package(SMESH CONFIG)
+            set (SMESH_INCLUDE_DIR ${SMESH_INCLUDE_PATH})
+            SET(EXTERNAL_SMESH_LIBS ${SMESH_LIBRARIES})
             if(NOT SMESH_FOUND)
                 message(ERROR "================\n"
                               "SMESH not found.\n"
@@ -733,7 +779,9 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
             endif()
             include_directories(${SMESH_INCLUDE_DIR})
         endif()
+
         set(SMESH_FOUND TRUE)
+        configure_file(SMESH_Version.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/SMESH_Version.h)
     ENDIF(BUILD_SMESH)
 
 # -------------------------------- Netgen --------------------------------
@@ -759,12 +807,21 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 # -------------------------------- Eigen --------------------------------
 
+# necessary for Sketcher module
+# necessary for Robot module
+
     find_package(Eigen3)
     IF(NOT EIGEN3_FOUND)
         MESSAGE("=================\n"
                 "Eigen3 not found.\n"
                 "=================\n")
     ENDIF(NOT EIGEN3_FOUND)
+
+    if (${EIGEN3_VERSION} VERSION_LESS "3.3.1")
+        message(WARNING "Disable module flatmesh because it requires "
+                        "minimum Eigen3 version 3.3.1 but version ${EIGEN3_VERSION} was found")
+        set (BUILD_FLAT_MESH OFF)
+    endif()
 
 # -------------------------------- Qt --------------------------------
 
@@ -828,26 +885,35 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
         endmacro(fc_wrap_cpp)
 
     elseif (BUILD_QT5)
-        find_package(Qt5Network)
-        find_package(Qt5Xml)
+        find_package(Qt5Core REQUIRED)
+        find_package(Qt5Network REQUIRED)
+        find_package(Qt5Xml REQUIRED)
         if(BUILD_GUI)
-            find_package(Qt5Widgets)
-            find_package(Qt5PrintSupport)
-            find_package(Qt5OpenGL)
-            find_package(Qt5Svg)
-            find_package(Qt5UiTools)
-            find_package(Qt5Network)
-            find_package(Qt5Concurrent)
-            if (BUILD_QT5_WEBKIT)
-                find_package(Qt5WebKitWidgets)
+            find_package(Qt5Widgets REQUIRED)
+            find_package(Qt5PrintSupport REQUIRED)
+            find_package(Qt5OpenGL REQUIRED)
+            find_package(Qt5Svg REQUIRED)
+            find_package(Qt5UiTools REQUIRED)
+            find_package(Qt5Concurrent REQUIRED)
+            if (BUILD_WEB)
+                if (${FREECAD_USE_QTWEBMODULE} MATCHES "Qt Webkit")
+                    find_package(Qt5WebKitWidgets REQUIRED)
+                elseif(${FREECAD_USE_QTWEBMODULE} MATCHES "Qt WebEngine")
+                    find_package(Qt5WebEngineWidgets REQUIRED)
+                    if (Qt5WebEngineWidgets_VERSION VERSION_LESS 5.7.0)
+                        message(FATAL_ERROR "** Minimum supported Qt5WebEngine version is 5.7.0!\n")
+                    endif()
+                else() # Automatic
+                    find_package(Qt5WebKitWidgets QUIET)
+                    if(NOT Qt5WebKitWidgets_FOUND)
+                        find_package(Qt5WebEngineWidgets REQUIRED)
+                        if (Qt5WebEngineWidgets_VERSION VERSION_LESS 5.7.0)
+                            message(FATAL_ERROR "** Minimum supported Qt5WebEngine version is 5.7.0!\n")
+                        endif()
+                    endif()
+                endif()
             endif()
         endif(BUILD_GUI)
-
-        IF(NOT Qt5Core_FOUND)
-            MESSAGE(FATAL_ERROR "========================\n"
-                                "Qt5 libraries not found.\n"
-                                "========================\n")
-        ENDIF(NOT Qt5Core_FOUND)
 
         # This is a special version of the built in macro qt5_wrap_cpp
         # It is required since moc'ed files are now included instead of being added to projects directly
@@ -893,7 +959,7 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
         if(OPENGL_GLU_FOUND)
             find_package_message(OPENGL_GLU
                 "Found OpenGLU: ${OPENGL_glu_LIBRARY}"
-                "[${OPENGL_glu_LIBRARY}][${OEPNGL_INCLUDE_DIR}]")
+                "[${OPENGL_glu_LIBRARY}][${OPENGL_INCLUDE_DIR}]")
         else(OPENGL_GLU_FOUND)
             message(FATAL_ERROR "======================\n"
                                 "GLU library not found.\n"
@@ -927,8 +993,8 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
             SET(PYTHON_CONFIG_SUFFIX -python2.7 CACHE STRING "Shiboken cmake file suffix. If left empty, system default will be used: <ShibokenConfigPYTHON_CONFIG_SUFFIX.cmake>")
             SET(PYTHON_BASENAME -python2.7 CACHE STRING "Same as PYTHON_SUFFIX but for PySide. If left empty, PYTHON_SUFFIX will be used: <PySideConfigPYTHON_BASENAME.cmake>")
         else()
-            SET(PYTHON_CONFIG_SUFFIX "" CACHE STRING "Shiboken cmake file suffix. If left empty, system default will be used: <ShibokenConfigPYTHON_CONFIG_SUFFIX.cmake>")
-            SET(PYTHON_BASENAME "" CACHE STRING "Same as PYTHON_SUFFIX but for PySide. If left empty, PYTHON_SUFFIX will be used: <PySideConfigPYTHON_BASENAME.cmake>")
+            #SET(PYTHON_CONFIG_SUFFIX "" CACHE STRING "Shiboken cmake file suffix. If left empty, system default will be used: <ShibokenConfigPYTHON_CONFIG_SUFFIX.cmake>")
+            #SET(PYTHON_BASENAME "" CACHE STRING "Same as PYTHON_SUFFIX but for PySide. If left empty, PYTHON_SUFFIX will be used: <PySideConfigPYTHON_BASENAME.cmake>")
         endif()
 
         if(DEFINED MACPORTS_PREFIX)
@@ -936,21 +1002,45 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
             find_package(PySide REQUIRED HINTS "${PYTHON_LIBRARY_DIR}/cmake")
         endif(DEFINED MACPORTS_PREFIX)
 
-        find_package(Shiboken2)# REQUIRED
+        find_package(Shiboken2 QUIET)# REQUIRED
+        if (Shiboken2_FOUND)
+            # Shiboken2 config file was found but it may use the wrong Python version
+            # Try to get the matching config suffix and repeat finding the package
+            if (PYTHON_VERSION_MAJOR LESS 3)
+                set(SHIBOKEN_PATTERN -python${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR})
+            else()
+                set(SHIBOKEN_PATTERN .cpython-${PYTHON_VERSION_MAJOR}${PYTHON_VERSION_MINOR})
+            endif()
+
+            file(GLOB SHIBOKEN_CONFIG "${Shiboken2_DIR}/Shiboken2Config${SHIBOKEN_PATTERN}*.cmake")
+            if (SHIBOKEN_CONFIG)
+                get_filename_component(SHIBOKEN_CONFIG_SUFFIX ${SHIBOKEN_CONFIG} NAME)
+                string(SUBSTRING ${SHIBOKEN_CONFIG_SUFFIX} 15 -1 SHIBOKEN_CONFIG_SUFFIX)
+                string(REPLACE ".cmake" "" PYTHON_CONFIG_SUFFIX ${SHIBOKEN_CONFIG_SUFFIX})
+                MESSAGE(STATUS "PYTHON_CONFIG_SUFFIX: ${PYTHON_CONFIG_SUFFIX}")
+                find_package(Shiboken2 QUIET)
+            endif()
+        endif()
+
         if(NOT SHIBOKEN_INCLUDE_DIR)
-            MESSAGE(FATAL_ERROR "====================\n"
-                                "shiboken2 not found.\n"
-                                "====================\n")
+            MESSAGE("====================\n"
+                    "shiboken2 not found.\n"
+                    "====================\n")
         endif(NOT SHIBOKEN_INCLUDE_DIR)
 
-        find_package(PySide2)# REQUIRED
+        find_package(PySide2 QUIET)# REQUIRED
         if(NOT PYSIDE_INCLUDE_DIR)
-            MESSAGE(FATAL_ERROR "==================\n"
-                                "PySide2 not found.\n"
-                                "==================\n")
+            MESSAGE("==================\n"
+                    "PySide2 not found.\n"
+                    "==================\n")
         endif(NOT PYSIDE_INCLUDE_DIR)
 
-        find_package(PySide2Tools REQUIRED) # PySide2 utilities (pyside2-uic & pyside2-rcc)
+        find_package(PySide2Tools QUIET) #REQUIRED # PySide2 utilities (pyside2-uic & pyside2-rcc)
+        if(NOT PYSIDE2_TOOLS_FOUND)
+            MESSAGE("=======================\n"
+                    "PySide2Tools not found.\n"
+                    "=======================\n")
+        endif(NOT PYSIDE2_TOOLS_FOUND)
 
         file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/Ext/PySide)
         file(WRITE ${CMAKE_BINARY_DIR}/Ext/PySide/__init__.py "# PySide wrapper\n"
@@ -963,17 +1053,18 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
                                                             "from PySide2.QtWidgets import *\n"
                                                             "QHeaderView.setResizeMode = QHeaderView.setSectionResizeMode\n")
         file(WRITE ${CMAKE_BINARY_DIR}/Ext/PySide/QtSvg.py  "from PySide2.QtSvg import *\n")
+        file(WRITE ${CMAKE_BINARY_DIR}/Ext/PySide/QtUiTools.py  "from PySide2.QtUiTools import *\n")
 
-	if(APPLE)
+	if(APPLE AND NOT BUILD_WITH_CONDA)
 	    INSTALL(
-	        DIRECTORY	
+	        DIRECTORY
                     ${CMAKE_BINARY_DIR}/Ext/PySide
 		DESTINATION
                     MacOS
             )
 	else()
             INSTALL(
-	        DIRECTORY	
+	        DIRECTORY
                     ${CMAKE_BINARY_DIR}/Ext/PySide
                 DESTINATION
                     Ext
@@ -984,10 +1075,10 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
         # Below are two variables that can be left empty for standard python 3 version,
         # but must be set by the user for different python versions such as 2.7, 3.5 ...
         if (PYTHON_VERSION_MAJOR LESS 3)
-            SET(PYTHON_SUFFIX -python2.7 CACHE STRING "Shiboken cmake file suffix. If left empty, system default will be used: <ShibokenConfigPYTHON_SUFFIX.cmake>")
+            SET(PYTHON_CONFIG_SUFFIX -python2.7 CACHE STRING "Shiboken cmake file suffix. If left empty, system default will be used: <ShibokenConfigPYTHON_CONFIG_SUFFIX.cmake>")
             SET(PYTHON_BASENAME -python2.7 CACHE STRING "Same as PYTHON_SUFFIX but for PySide. If left empty, PYTHON_SUFFIX will be used: <PySideConfigPYTHON_BASENAME.cmake>")
         else()
-            SET(PYTHON_SUFFIX "" CACHE STRING "Shiboken cmake file suffix. If left empty, system default will be used: <ShibokenConfigPYTHON_SUFFIX.cmake>")
+            SET(PYTHON_CONFIG_SUFFIX "" CACHE STRING "Shiboken cmake file suffix. If left empty, system default will be used: <ShibokenConfigPYTHON_CONFIG_SUFFIX.cmake>")
             SET(PYTHON_BASENAME "" CACHE STRING "Same as PYTHON_SUFFIX but for PySide. If left empty, PYTHON_SUFFIX will be used: <PySideConfigPYTHON_BASENAME.cmake>")
         endif()
 
@@ -1073,8 +1164,8 @@ ENDIF(CMAKE_SIZEOF_VOID_P EQUAL 8)
 
 IF(MSVC)
 	# set default compiler settings
-	SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /EHa")
-	SET (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DFC_DEBUG /Zm128")
+	SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zm150")
+    SET (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DFC_DEBUG /Zm150 /bigobj")
 	# set default libs
 	SET (CMAKE_C_STANDARD_LIBRARIES "kernel32.lib user32.lib gdi32.lib winspool.lib SHFolder.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib winmm.lib comsupp.lib Ws2_32.lib dbghelp.lib ")
 	set (CMAKE_CXX_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES}")
@@ -1086,6 +1177,12 @@ IF(MSVC)
 		set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
 		set (CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG")
 	ENDIF(FREECAD_RELEASE_PDB)
+    IF(FREECAD_RELEASE_SEH)
+		SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /EHa")
+    ENDIF(FREECAD_RELEASE_SEH)
+    # set "Build with Multiple Processes"
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+	SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /MP")
 
 	# Mark 32 bit executables large address aware so they can use > 2GB address space
 	# NOTE: This setting only has an effect on machines with at least 3GB of RAM, although it sets the linker option it doesn't set the linker switch 'Enable Large Addresses'
@@ -1124,102 +1221,17 @@ add_subdirectory(data)
 
 # ================================================================================
 # == Packaging ===================================================================
-if(FREECAD_MAINTAINERS_BUILD AND NOT WIN32)
-	set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "An extensible Open Source CAx program")
-	set(CPACK_PACKAGE_VENDOR "FreeCAD development team")
-	if(WIN32)
-		set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README.Win32")
-	else(WIN32)
-		set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README.Linux")
-	endif(WIN32)
-	set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/copying.lib")
-	set(CPACK_PACKAGE_VERSION_MAJOR ${PACKAGE_VERSION_MAJOR})
-	set(CPACK_PACKAGE_VERSION_MINOR ${PACKAGE_VERSION_MINOR})
-	set(CPACK_PACKAGE_VERSION_PATCH ${PACKAGE_VERSION_PATCH})
-	set(CPACK_SOURCE_PACKAGE_FILE_NAME ${PACKAGE_NAME}-${PACKAGE_VERSION})
-
-	#for debian: 'cmake .. -DFREECAD_MAINTAINERS_BUILD=TRUE -DCPACK_GENERATOR="DEB"'
-	IF( CMAKE_SIZEOF_VOID_P EQUAL 4 )
-		set(PKG_ARCH i386)
-	ELSE( CMAKE_SIZEOF_VOID_P EQUAL 4 )
-		set(PKG_ARCH amd64)
-	ENDIF( CMAKE_SIZEOF_VOID_P EQUAL 4 )
-	set(CPACK_DEBIAN_PACKAGE_SECTION "science")
-	set(CPACK_DEBIAN_PACKAGE_DEPENDS "python, oce | opencascade, libqtgui4, libcoin60, libxerces-c3.1, zlib1g, libboost-dev, libeigen2-dev")
-	set(CPACK_PACKAGE_CONTACT "<root@localhost>")
-	set(CPACK_PACKAGE_FILE_NAME "${PACKAGE_NAME}-${PACKAGE_VERSION}_${PKG_ARCH}")
-
-	if(WIN32)
-		set(CPACK_GENERATOR "ZIP")
-		set(CPACK_SOURCE_GENERATOR "ZIP")
-	else(WIN32)
-		if( CPACK_GENERATOR STREQUAL "" )
-			set(CPACK_GENERATOR "TGZ")
-			set(CPACK_SOURCE_GENERATOR "TGZ")
-		endif()
-	endif(WIN32)
-	file(GLOB DOT ".*")
-	file(GLOB TILD "*~")
-	set(CPACK_SOURCE_IGNORE_FILES
-	  "${DOT}"
-	  "${TILD}"
-	  ".a$"
-	  ".am$"
-	  ".in$"
-	  ".bat$"
-	  ".o$"
-	  ".so$"
-	  ".m4$"
-	  "/_build/"
-	  "/_cmake/"
-	  "/.deps/"
-	  "/.svn/"
-	  "/CMakeFiles/"
-	  "/CVS/"
-	  "/autom4te.cache/"
-	  "/build/"
-	  "/debian/"
-	  "/debug/"
-	  "/docs/"
-	  "/m4/"
-	  "/qt-build/"
-	  "/CxImage/"
-	  "/WindowsInstaller/"
-	  "AdditionalInfo.txt$"
-	  "CMakeCache.txt$"
-	  "Makefile$"
-	  "\\\\.sh$"
-	  "_CPack_"
-	  "config.h$"
-	  "config.log$"
-	  "config.status$"
-	  "configure$"
-	  "configure.ac$"
-	  "Doxyfile"
-	  "html$"
-	  "stamp-h1$"
-	  ".swp$"
-	  "tar.bz2"
-	  "tar.gz"
-	  "~$"
-	)
-	set(CPACK_SOURCE_STRIP_FILES "")
-	include(CPack)
-
-	#ADD_CUSTOM_TARGET(DIST make package_source)
-
-endif(FREECAD_MAINTAINERS_BUILD AND NOT WIN32)
-    #add_custom_target(dist COMMAND ${CMAKE_MAKE_PROGRAM} package_source)
-    add_custom_target(dist-git
+#add_custom_target(dist COMMAND ${CMAKE_MAKE_PROGRAM} package_source)
+add_custom_target(dist-git
             COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/src/Tools/makedist.py
               --srcdir=${CMAKE_SOURCE_DIR} --bindir=${CMAKE_BINARY_DIR}
               WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    )
-    add_custom_target(distdfsg-git
+)
+add_custom_target(distdfsg-git
             COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/src/Tools/makedist.py
               --srcdir=${CMAKE_SOURCE_DIR} --bindir=${CMAKE_BINARY_DIR} --dfsg
               WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    )
+)
 if(CMAKE_COMPILER_IS_GNUCXX OR MINGW)
     add_custom_target(distcheck-git
             COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/src/Tools/makedist.py
@@ -1232,6 +1244,199 @@ if(CMAKE_COMPILER_IS_GNUCXX OR MINGW)
               WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     )
 endif(CMAKE_COMPILER_IS_GNUCXX OR MINGW)
+
+# -------------------------------- The final report ----------------------------------
+
+MESSAGE(STATUS "==============\n"
+               "Summary report\n"
+               "==============\n")
+
+# Qt5 needs/sets PYTHON_CONFIG_SUFFIX regarding Shiboken
+MESSAGE(STATUS "Python:              [${PYTHON_EXECUTABLE}] [${PYTHON_CONFIG_SUFFIX}]")
+
+IF(DEFINED PCL_FOUND)
+  MESSAGE(STATUS "PCL:                 ${PCL_VERSION}")
+ELSE(DEFINED PCL_FOUND)
+  MESSAGE(STATUS "PCL:                 not enabled")
+ENDIF(DEFINED PCL_FOUND)
+
+IF(DEFINED pybind11_FOUND)
+  MESSAGE(STATUS "pybind11:            ${pybind11_VERSION}")
+ELSE(DEFINED pybind11_FOUND)
+  MESSAGE(STATUS "pybind11:            not enabled")
+ENDIF(DEFINED pybind11_FOUND)
+
+MESSAGE(STATUS "Boost:               ${Boost_VERSION}")
+
+MESSAGE(STATUS "XercesC:             [${XercesC_LIBRARIES}] [${XercesC_INCLUDE_DIRS}]")
+
+MESSAGE(STATUS "ZLIB:                ${ZLIB_VERSION_STRING}")
+
+MESSAGE(STATUS "PyCXX:               [${PYCXX_INCLUDE_DIR}]")
+
+MESSAGE(STATUS "OCC:                 ${OCC_VERSION_STRING} [${OCC_LIBRARIES}]")
+
+IF(BUILD_SMESH)
+  IF(FREECAD_USE_EXTERNAL_SMESH)
+    MESSAGE(STATUS "SMESH:               ${SMESH_VERSION}")
+  ELSE(FREECAD_USE_EXTERNAL_SMESH)
+    MESSAGE(STATUS "SMESH:               build internal")
+    MESSAGE(STATUS " MEDFile:            [${MEDFILE_LIBRARIES}] [${MEDFILE_INCLUDE_DIRS}]")
+    MESSAGE(STATUS " HDF5:               ${HDF5_VERSION}")
+    MESSAGE(STATUS " VTK:                ${VTK_VERSION}")
+  ENDIF(FREECAD_USE_EXTERNAL_SMESH)
+ELSE(BUILD_SMESH)
+  MESSAGE(STATUS "SMESH:               do not build")
+ENDIF(BUILD_SMESH)
+
+IF(DEFINED NETGEN_FOUND)
+  MESSAGE(STATUS "NETGEN:              ${NETGEN_VERSION} [${NETGEN_DEFINITIONS}] [${NETGEN_CXX_FLAGS}] [${NGLIB_INCLUDE_DIR}] [${NGLIB_LIBRARIES}] [${NETGEN_INCLUDE_DIRS}]")
+ELSE(DEFINED NETGEN_FOUND)
+  MESSAGE(STATUS "NETGEN:              not enabled")
+ENDIF(DEFINED NETGEN_FOUND)
+
+#MESSAGE(STATUS "OpenCV:              ${OpenCV_VERSION}")
+
+IF(DEFINED SWIG_FOUND)
+  MESSAGE(STATUS "SWIG:                ${SWIG_VERSION}")
+ELSE(DEFINED SWIG_FOUND)
+  MESSAGE(STATUS "SWIG:                not found")
+ENDIF(DEFINED SWIG_FOUND)
+
+IF(DEFINED EIGEN3_FOUND)
+  MESSAGE(STATUS "Eigen3               ${EIGEN3_VERSION}")
+ELSE(DEFINED EIGEN3_FOUND)
+  MESSAGE(STATUS "Eigen3:              not found")
+ENDIF(DEFINED EIGEN3_FOUND)
+
+IF(NOT BUILD_QT5)
+  MESSAGE(STATUS "Qt4:                 ${Qt4_VERSION}")
+  IF(QT_QTWEBKIT_FOUND)
+    MESSAGE(STATUS "QtWebKit:            found")
+  ELSE(QT_QTWEBKIT_FOUND)
+    MESSAGE(STATUS "QtWebKit:            not found")
+  ENDIF(QT_QTWEBKIT_FOUND)
+  MESSAGE(STATUS "Shiboken:            ${Shiboken_VERSION} [${SHIBOKEN_INCLUDE_DIR}]")
+  MESSAGE(STATUS "PySide:              ${PySide_VERSION} [${PYSIDE_INCLUDE_DIR}]")
+  MESSAGE(STATUS "PySideTools:         [${PYSIDEUIC4BINARY}] [${PYSIDERCC4BINARY}]")
+ELSE(NOT BUILD_QT5)
+  MESSAGE(STATUS "Qt5Core:             ${Qt5Core_VERSION}")
+  MESSAGE(STATUS "Qt5Network:          ${Qt5Network_VERSION}")
+  MESSAGE(STATUS "Qt5Xml:              ${Qt5Xml_VERSION}")
+  IF (BUILD_GUI)
+    MESSAGE(STATUS "Qt5Widgets:          ${Qt5Widgets_VERSION}")
+    MESSAGE(STATUS "Qt5PrintSupport:     ${Qt5PrintSupport_VERSION}")
+    MESSAGE(STATUS "Qt5OpenGL:           ${Qt5OpenGL_VERSION}")
+    MESSAGE(STATUS "Qt5Svg:              ${Qt5Svg_VERSION}")
+    MESSAGE(STATUS "Qt5UiTools:          ${Qt5UiTools_VERSION}")
+    MESSAGE(STATUS "Qt5Concurrent:       ${Qt5Concurrent_VERSION}")
+    IF(BUILD_WEB)
+      MESSAGE(STATUS "Qt5WebKitWidgets:    ${Qt5WebKitWidgets_VERSION}")
+      MESSAGE(STATUS "Qt5WebEngineWidgets: ${Qt5WebEngineWidgets_VERSION}")
+    ELSE(BUILD_WEB)
+      MESSAGE(STATUS "Qt5WebKitWidgets:    not needed (BUILD_WEB)")
+      MESSAGE(STATUS "Qt5WebEngineWidgets:    not needed (BUILD_WEB)")
+    ENDIF(BUILD_WEB)
+  ELSE(BUILD_GUI)
+    MESSAGE(STATUS "Qt5Widgets:          not needed")
+    MESSAGE(STATUS "Qt5PrintSupport:     not needed")
+    MESSAGE(STATUS "Qt5OpenGL:           not needed")
+    MESSAGE(STATUS "Qt5Svg:              not needed")
+    MESSAGE(STATUS "Qt5UiTools:          not needed")
+    MESSAGE(STATUS "Qt5Concurrent:       not needed")
+    MESSAGE(STATUS "Qt5WebKitWidgets:    not needed")
+  ENDIF(BUILD_GUI)
+
+  IF(DEFINED MACPORTS_PREFIX)
+    IF(DEFINED Shiboken_FOUND)
+      MESSAGE(STATUS "Shiboken:            ${Shiboken_VERSION} [${SHIBOKEN_INCLUDE_DIR}]")
+    ELSE(DEFINED Shiboken_FOUND)
+      MESSAGE(STATUS "Shiboken:            not found (only searched if MACPORTS_PREFIX is defined)")
+    ENDIF(DEFINED Shiboken_FOUND)
+    IF(DEFINED PySide_FOUND)
+      MESSAGE(STATUS "PySide:              ${PySide_VERSION} [${PYSIDE_INCLUDE_DIR}]")
+      IF(NOT PYSIDE_INCLUDE_DIR)
+        MESSAGE(STATUS " IncludeDir:         Unable to find, python version missmatch?")
+      ENDIF(NOT PYSIDE_INCLUDE_DIR)
+    ELSE(DEFINED PySide_FOUND)
+      MESSAGE(STATUS "PySide:              not found (only searched if MACPORTS_PREFIX is defined)")
+    ENDIF(DEFINED PySide_FOUND)
+  ENDIF(DEFINED MACPORTS_PREFIX)
+
+  IF(DEFINED Shiboken2_FOUND)
+    MESSAGE(STATUS "Shiboken2:           ${Shiboken2_VERSION} [${Shiboken2_DIR}] [${SHIBOKEN_INCLUDE_DIR}]")
+  ELSE(DEFINED Shiboken2_FOUND)
+    MESSAGE(STATUS "Shiboken2:           not found")
+  ENDIF(DEFINED Shiboken2_FOUND)
+  IF(DEFINED PySide2_FOUND)
+    MESSAGE(STATUS "PySide2:             ${PySide2_VERSION} [${PYSIDE_INCLUDE_DIR}]")
+    IF(NOT PYSIDE_INCLUDE_DIR)
+      MESSAGE(STATUS " IncludeDir:         Unable to find, python version missmatch?")
+    ENDIF(NOT PYSIDE_INCLUDE_DIR)
+  ELSE(DEFINED PySide2_FOUND)
+    MESSAGE(STATUS "PySide2:             not found")
+  ENDIF(DEFINED PySide2_FOUND)
+  IF(DEFINED PYSIDE2_TOOLS_FOUND)
+    MESSAGE(STATUS "PySide2Tools:        [${PYSIDE2UICBINARY}] [${PYSIDE2RCCBINARY}]")
+  ELSE(DEFINED PYSIDE2_TOOLS_FOUND)
+    MESSAGE(STATUS "PySide2Tools:        not found")
+  ENDIF(DEFINED PYSIDE2_TOOLS_FOUND)
+ENDIF(NOT BUILD_QT5)
+
+IF(FREECAD_USE_FREETYPE)
+  IF(DEFINED FREETYPE_FOUND)
+    MESSAGE(STATUS "Freetype:            ${FREETYPE_VERSION_STRING}")
+  ELSE(DEFINED FREETYPE_FOUND)
+    MESSAGE(STATUS "Freetype:            not found")
+  ENDIF(DEFINED FREETYPE_FOUND)
+ELSE(FREECAD_USE_FREETYPE)
+  MESSAGE(STATUS "Freetype:            disabled")
+ENDIF(FREECAD_USE_FREETYPE)
+
+MESSAGE(STATUS "OpenGLU:             ${OPENGL_glu_LIBRARY} [${OPENGL_glu_LIBRARY}][${OPENGL_INCLUDE_DIR}]")
+
+MESSAGE(STATUS "Coin3D:              [${COIN3D_LIBRARIES}] [${COIN3D_INCLUDE_DIRS}]")
+
+
+IF (WIN32)
+#MESSAGE(STATUS "SPNAV:               not available yet for your OS") # FREECAD_USE_3DCONNEXION instead...
+ELSE(WIN32)
+  IF(DEFINED SPNAV_FOUND)
+    MESSAGE(STATUS "SPNAV:               [${SPNAV_LIBRARY}] [${SPNAV_INCLUDE_DIR}]")
+  ELSE(DEFINED SPNAV_FOUND)
+    MESSAGE(STATUS "SPNAV:               not found")
+  ENDIF(DEFINED SPNAV_FOUND)
+ENDIF(WIN32)
+
+IF(MATPLOTLIB_FOUND)
+  MESSAGE(STATUS "Matplotlib:          ${MATPLOTLIB_VERSION}")
+ELSE(MATPLOTLIB_FOUND)
+  MESSAGE(STATUS "Matplotlib:          not found")
+ENDIF(MATPLOTLIB_FOUND)
+
+IF(BUILD_VR)
+  IF(DEFINED RIFT_FOUND)
+    MESSAGE(STATUS "Rift:                ${Rift_VERSION}")
+  ELSE(DEFINED RIFT_FOUND)
+    MESSAGE(STATUS "Rift:                not found")
+  ENDIF(DEFINED RIFT_FOUND)
+ELSE(BUILD_VR)
+  MESSAGE(STATUS "Rift:                not enabled (BUILD_VR)")
+ENDIF(BUILD_VR)
+
+IF(DOXYGEN_FOUND)
+  MESSAGE(STATUS "Doxygen:             ${DOXYGEN_VERSION}")
+  MESSAGE(STATUS " Language:           ${DOXYGEN_LANGUAGE}")
+  IF(COIN3D_DOC_FOUND)
+    MESSAGE(STATUS " Coin3D_DOC:         found [${COIN3D_DOC_PATH}]")
+  ELSE(COIN3D_DOC_FOUND)
+    MESSAGE(STATUS " Coin3D_DOC:         not found")
+  ENDIF(COIN3D_DOC_FOUND)
+ELSE(DOXYGEN_FOUND)
+  MESSAGE(STATUS "Doxygen:             not found")
+ENDIF(DOXYGEN_FOUND)
+
+
 
 # Print message to start build process
 if (${CMAKE_BUILD_TOOL} MATCHES "make")

@@ -39,6 +39,7 @@ include_directories(
     ${CMAKE_CURRENT_BINARY_DIR}/Quarter
     ${CMAKE_CURRENT_BINARY_DIR}/DAGView
     ${Boost_INCLUDE_DIRS}
+    ${EIGEN3_INCLUDE_DIR}
     ${COIN3D_INCLUDE_DIRS}
     ${PYTHON_INCLUDE_DIRS}
     ${XercesC_INCLUDE_DIRS}
@@ -47,11 +48,24 @@ include_directories(
 )
 
 if(MSVC)
+    include_directories(
+        ${CMAKE_SOURCE_DIR}/src/3rdParty/OpenGL/api
+    )
+endif(MSVC)
+
+if(MSVC)
     set(FreeCADGui_LIBS
          FreeCADApp
          ${COIN3D_LIBRARIES}
          ${OPENGL_gl_LIBRARY}
     )
+
+    if(FREECAD_USE_3DCONNEXION)
+        list(APPEND FreeCADGui_LIBS
+            hid
+        )
+    endif()
+
 else(MSVC)
     set(FreeCADGui_LIBS
         FreeCADApp
@@ -92,6 +106,39 @@ else()
 endif()
 
 IF(SPNAV_FOUND)
+	if(SPNAV_USE_X11)
+	  add_definitions(-DSPNAV_USE_X11)
+      if (BUILD_QT5 AND UNIX AND NOT APPLE)
+        find_package(Qt5X11Extras REQUIRED)
+        include_directories(${Qt5X11Extras_INCLUDE_DIRS})
+        list(APPEND FreeCADGui_LIBS ${Qt5X11Extras_LIBRARIES})
+      endif()
+      find_package(X11 QUIET)
+      if (X11_FOUND)
+        list(APPEND FreeCADGui_LIBS
+            ${X11_X11_LIB}
+        )
+      endif(X11_FOUND)
+      SET(FreeCADGui_SDK_SRCS
+        3Dconnexion/GuiAbstractNativeEvent.cpp
+        3Dconnexion/GuiNativeEventLinuxX11.cpp
+        )
+      SET(FreeCADGui_SDK_MOC_HDRS
+        3Dconnexion/GuiAbstractNativeEvent.h
+        3Dconnexion/GuiNativeEventLinuxX11.h
+        )
+    else(SPNAV_USE_X11)
+      SET(FreeCADGui_SDK_SRCS
+        3Dconnexion/GuiAbstractNativeEvent.cpp
+        3Dconnexion/GuiNativeEventLinux.cpp
+      )
+      SET(FreeCADGui_SDK_MOC_HDRS
+        3Dconnexion/GuiAbstractNativeEvent.h
+        3Dconnexion/GuiNativeEventLinux.h
+      )
+	endif(SPNAV_USE_X11)
+    SOURCE_GROUP("3D connexion SDK" FILES ${FreeCADGui_SDK_SRCS})
+	
     add_definitions(-DSPNAV_FOUND)
     include_directories(
         ${SPNAV_INCLUDE_DIR}
@@ -99,12 +146,6 @@ IF(SPNAV_FOUND)
     list(APPEND FreeCADGui_LIBS
         ${SPNAV_LIBRARIES}
     )
-    find_package(X11 QUIET)
-    if (X11_FOUND)
-        list(APPEND FreeCADGui_LIBS
-            ${X11_X11_LIB}
-        )
-    endif(X11_FOUND)
 ENDIF(SPNAV_FOUND)
 
 IF(OCULUS_FOUND)
@@ -176,16 +217,26 @@ SET(FreeCADGui_SDK_SRCS
     3Dconnexion/I3dMouseParams.h
     3Dconnexion/MouseParameters.cpp
     3Dconnexion/MouseParameters.h
-    3Dconnexion/GuiApplicationNativeEventAwareWin32.cpp
+    3Dconnexion/GuiAbstractNativeEvent.cpp
+    3Dconnexion/GuiNativeEventWin32.cpp
 )
 SOURCE_GROUP("3D connexion SDK" FILES ${FreeCADGui_SDK_SRCS})
+SET(FreeCADGui_SDK_MOC_HDRS
+  3Dconnexion/GuiAbstractNativeEvent.h
+  3Dconnexion/GuiNativeEventWin32.h
+)
 endif(FREECAD_USE_3DCONNEXION AND MSVC)
 
 if(FREECAD_USE_3DCONNEXION AND APPLE)
 SET(FreeCADGui_SDK_SRCS
-    3Dconnexion/GuiApplicationNativeEventAwareMac.cpp
+    3Dconnexion/GuiAbstractNativeEvent.cpp
+    3Dconnexion/GuiNativeEventMac.cpp
 )
 SOURCE_GROUP("3D connexion SDK" FILES ${FreeCADGui_SDK_SRCS})
+SET(FreeCADGui_SDK_MOC_HDRS
+  3Dconnexion/GuiAbstractNativeEvent.h
+  3Dconnexion/GuiNativeEventMac.h
+)
 endif(FREECAD_USE_3DCONNEXION AND APPLE)
 
 set(Gui_MOC_HDRS
@@ -219,6 +270,7 @@ set(Gui_MOC_HDRS
     DlgMaterialPropertiesImp.h
     DlgOnlineHelpImp.h
     DlgParameterImp.h
+    DlgParameterFind.h
     DlgPreferencesImp.h
     DlgProjectInformationImp.h
     DlgProjectUtility.h
@@ -296,6 +348,7 @@ set(Gui_MOC_HDRS
     TaskView/TaskView.h
     DAGView/DAGView.h
     DAGView/DAGModel.h
+    ${FreeCADGui_SDK_MOC_HDRS}
 )
 
 fc_wrap_cpp(Gui_MOC_SRCS ${Gui_MOC_HDRS})
@@ -337,6 +390,7 @@ SET(Gui_UIC_SRCS
     DlgMaterialProperties.ui
     DlgOnlineHelp.ui
     DlgParameter.ui
+    DlgParameterFind.ui
     DlgPreferences.ui
     DlgProjectInformation.ui
     DlgProjectUtility.ui
@@ -420,6 +474,7 @@ SET(Dialog_CPP_SRCS
     DlgMacroRecordImp.cpp
     DlgMaterialPropertiesImp.cpp
     DlgParameterImp.cpp
+    DlgParameterFind.cpp
     DlgProjectInformationImp.cpp
     DlgProjectUtility.cpp
     DlgPropertyLink.cpp
@@ -452,6 +507,7 @@ SET(Dialog_HPP_SRCS
     DlgMacroRecordImp.h
     DlgMaterialPropertiesImp.h
     DlgParameterImp.h
+    DlgParameterFind.h
     DlgProjectInformationImp.h
     DlgProjectUtility.h
     DlgPropertyLink.h
@@ -489,6 +545,7 @@ SET(Dialog_SRCS
     DlgMacroRecord.ui
     DlgMaterialProperties.ui
     DlgParameter.ui
+    DlgParameterFind.ui
     DlgProjectInformation.ui
     DlgProjectUtility.ui
     DlgPropertyLink.ui
@@ -806,6 +863,7 @@ SOURCE_GROUP("Widget\\QSintActionPanel\\Mocs" FILES ${qsint_MOC_SRCS})
 # The 3d view
 SET(View3D_CPP_SRCS
     Flag.cpp
+    GLBuffer.cpp
     GLPainter.cpp
     MouseSelection.cpp
     NavigationStyle.cpp
@@ -826,10 +884,12 @@ SET(View3D_CPP_SRCS
     CoinRiftWidget.cpp
     View3DPy.cpp
     View3DViewerPy.cpp
+    NaviCube.cpp
 )
 SET(View3D_SRCS
     ${View3D_CPP_SRCS}
     Flag.h
+    GLBuffer.h
     GLPainter.h
     MouseSelection.h
     NavigationStyle.h
@@ -842,6 +902,7 @@ SET(View3D_SRCS
     View3DInventorRiftViewer.h
     CoinRiftWidget.h
     View3DViewerPy.h
+    NaviCube.h
 )
 SOURCE_GROUP("View3D" FILES ${View3D_SRCS})
 
@@ -1086,6 +1147,7 @@ SET(FreeCADGui_CPP_SRCS
     DocumentModel.cpp
     DocumentPyImp.cpp
     DocumentObserver.cpp
+    DocumentObserverPython.cpp
     ExpressionBinding.cpp
     GraphicsViewZoom.cpp
     ExpressionCompleter.cpp
@@ -1094,6 +1156,7 @@ SET(FreeCADGui_CPP_SRCS
     GuiConsole.cpp
     Macro.cpp
     MergeDocuments.cpp
+    Namespace.h
     resource.cpp
     Control.cpp
     SpaceballEvent.cpp
@@ -1111,12 +1174,14 @@ SET(FreeCADGui_SRCS
     Document.h
     DocumentModel.h
     DocumentObserver.h
+    DocumentObserverPython.h
     ExpressionBinding.cpp
     ExpressionCompleter.h
     FreeCADGuiInit.py
     GraphicsViewZoom.h
     GuiApplication.h
     GuiApplicationNativeEventAware.h
+    3Dconnexion/GuiAbstractNativeEvent.h
     GuiConsole.h
     InventorAll.h
     Macro.h
@@ -1133,6 +1198,7 @@ SET(FreeCADGui_SRCS
     ManualAlignment.h
     TransactionObject.h
     WinNativeGestureRecognizers.h
+    ${FreeCADGui_SDK_MOC_HDRS}
 )
 
 SET(FreeCADGui_SRCS
@@ -1168,7 +1234,6 @@ SET(FreeCADGui_SRCS
 )
 
 if(MSVC)
-    add_definitions(-D_PreComp_)
     SET(FreeCADGui_CPP_SRCS
         Language/Translator.cpp
         propertyeditor/PropertyEditor.cpp
@@ -1193,15 +1258,18 @@ if(MSVC)
         ${Workbench_CPP_SRCS}
         ${FreeCADGui_CPP_SRCS}
     )
-    ADD_MSVC_PRECOMPILED_HEADER(FreeCADGui PreCompiled.h PreCompiled.cpp FreeCADGui_CPP_SRCS)
 endif(MSVC)
 
-add_library(FreeCADGui SHARED ${FreeCADGui_SRCS})
+if (BUILD_USE_PCH)
+    add_definitions(-D_PreComp_)
+    ADD_MSVC_PRECOMPILED_HEADER(FreeCADGui PreCompiled.h PreCompiled.cpp FreeCADGui_CPP_SRCS)
+endif(BUILD_USE_PCH)
 
 if (FREECAD_USE_QT_FILEDIALOG)
     set_source_files_properties(FileDialog.cpp PROPERTIES COMPILE_FLAGS -DUSE_QT_FILEDIALOG)
 endif()
 
+add_library(FreeCADGui SHARED ${FreeCADGui_SRCS})
 target_link_libraries(FreeCADGui ${FreeCADGui_LIBS})
 
 SET_BIN_DIR(FreeCADGui FreeCADGui)

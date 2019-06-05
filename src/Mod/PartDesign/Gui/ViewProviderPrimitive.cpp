@@ -58,7 +58,6 @@ PROPERTY_SOURCE(PartDesignGui::ViewProviderPrimitive,PartDesignGui::ViewProvider
 
 ViewProviderPrimitive::ViewProviderPrimitive()
 {
-    previewFaceSet = 0;
 }
 
 ViewProviderPrimitive::~ViewProviderPrimitive()
@@ -75,6 +74,7 @@ void ViewProviderPrimitive::setupContextMenu(QMenu* menu, QObject* receiver, con
     QAction* act;
     act = menu->addAction(QObject::tr("Edit primitive"), receiver, member);
     act->setData(QVariant((int)ViewProvider::Default));
+    PartDesignGui::ViewProvider::setupContextMenu(menu, receiver, member);
 }
 
 bool ViewProviderPrimitive::setEdit(int ModNum)

@@ -188,7 +188,7 @@ Area::Area(const Area &other, bool deep_copy)
     myShape = other.myShape;
     myShapeDone = other.myShapeDone;
     mySections.reserve(other.mySections.size());
-    for(shared_ptr<Area> area:mySections)
+    for(shared_ptr<Area> area:other.mySections)
         mySections.push_back(make_shared<Area>(*area,true));
 }
 
@@ -331,7 +331,7 @@ static std::vector<gp_Pnt> discretize(const TopoDS_Edge &edge, double deflection
     // NOTE: OCCT QuasiUniformDeflection has a bug cause it to return only
     // partial points for some (BSpline) curve if we pass in the edge trimmed
     // first and last parameters. Passing the original curve first and last
-    // paramaters works fine. The following algorithm uses the original curve
+    // parameters works fine. The following algorithm uses the original curve
     // parameters, and skip those out of range. The algorithm shall work the
     // same for any other discetization algorithm, althgouth it seems only 
     // QuasiUniformDeflection has this bug.
@@ -341,7 +341,7 @@ static std::vector<gp_Pnt> discretize(const TopoDS_Edge &edge, double deflection
         Standard_Failure::Raise("Curve discretization failed");
     if(discretizer.NbPoints () > 1) {
         int nbPoints = discretizer.NbPoints ();
-        //strangly OCC discretizer points are one-based, not zero-based, why?
+        //strangely OCC discretizer points are one-based, not zero-based, why?
         if(reversed) {
             for (int i=nbPoints-1; i>=1; --i) {
                 auto param = discretizer.Parameter(i);
@@ -448,7 +448,7 @@ void Area::addWire(CArea &area, const TopoDS_Wire& wire,
             AREA_WARN("ccurve not closed");
             ccurve.append(ccurve.m_vertices.front());
         }
-        area.append(ccurve);
+        area.move(std::move(ccurve));
     }
 }
 
@@ -755,7 +755,7 @@ struct WireJoiner {
         }
     }
 
-    // split any edges that are intersected by othe edge's end point in the middle
+    // split any edges that are intersected by other edge's end point in the middle
     void splitEdges() {
 #if (BOOST_VERSION < 105500)
         throw Base::RuntimeError("Module must be built with boost version >= 1.55");
@@ -1768,7 +1768,7 @@ TopoDS_Shape Area::getShape(int index) {
 
     FC_TIME_INIT(t);
 
-    // do offset first, then pocket the inner most offseted shape
+    // do offset first, then pocket the inner most offsetted shape
     std::list<shared_ptr<CArea> > areas;
     makeOffset(areas,PARAM_FIELDS(AREA_MY,AREA_PARAMS_OFFSET));
 
@@ -1899,6 +1899,16 @@ void Area::makeOffset(list<shared_ptr<CArea> > &areas,
     PARAM_ENUM_CONVERT(AREA_MY,PARAM_FNAME,PARAM_ENUM_EXCEPT,AREA_PARAMS_CLIPPER_FILL);
 #endif
 
+    if(offset<0) {
+        stepover = -fabs(stepover);
+        if(count<0) {
+            if(!last_stepover)
+                last_stepover = offset*0.5;
+            else
+                last_stepover = -fabs(last_stepover);
+        }else
+            last_stepover = 0;
+    }
     for(int i=0;count<0||i<count;++i,offset+=stepover) {
         if(from_center) 
             areas.push_front(make_shared<CArea>());
@@ -1940,8 +1950,21 @@ void Area::makeOffset(list<shared_ptr<CArea> > &areas,
 #endif
         if(count>1)
             FC_TIME_LOG(t1,"makeOffset " << i << '/' << count);
-        if(area.m_curves.empty())
+        if(area.m_curves.empty()) {
+            if(from_center) 
+                areas.pop_front();
+            else
+                areas.pop_back();
+            if(areas.empty())
+                break;
+            if(last_stepover && last_stepover>stepover) {
+                offset -= stepover;
+                stepover = last_stepover;
+                --i;
+                continue;
+            }
             return;
+        }
     }
     FC_TIME_LOG(t,"makeOffset count: " << count);
 }
@@ -2004,6 +2027,7 @@ TopoDS_Shape Area::makePocket(int index, PARAM_ARGS(PARAM_FARG,AREA_PARAMS_POCKE
         Offset = -tool_radius-extra_offset-shift;
         ExtraPass = -1;
         Stepover = -stepover;
+        LastStepover = -last_stepover;
         // make offset and make sure the loop is CW (i.e. inner wires)
         return makeOffset(index,PARAM_FIELDS(PARAM_FNAME,AREA_PARAMS_OFFSET),-1,from_center);
     }case Area::PocketModeZigZagOffset:
@@ -2035,6 +2059,8 @@ TopoDS_Shape Area::makePocket(int index, PARAM_ARGS(PARAM_FARG,AREA_PARAMS_POCKE
             shift = 0.0; //Line pattern does not support shift
         Point center(box.Centre());
         double r = box.Radius()+stepover;
+        if ( extra_offset > 0 )
+            r += extra_offset;
         int steps = (int)ceil(r*2.0/stepover);
         for(int i=0;i<count;++i) {
             double a = angle + angles[i];
@@ -2056,7 +2082,7 @@ TopoDS_Shape Area::makePocket(int index, PARAM_ARGS(PARAM_FARG,AREA_PARAMS_POCKE
         PARAM_ENUM_CONVERT(AREA_MY,PARAM_FNAME,PARAM_ENUM_EXCEPT,AREA_PARAMS_CLIPPER_FILL);
         PARAM_ENUM_CONVERT(AREA_MY,PARAM_FNAME,PARAM_ENUM_EXCEPT,AREA_PARAMS_OFFSET_CONF);
         auto area = *myArea;
-        area.OffsetWithClipper(-tool_radius,JoinType,EndType,
+        area.OffsetWithClipper(-tool_radius-extra_offset,JoinType,EndType,
                 myParams.MiterLimit,myParams.RoundPrecision);
         out.Clip(toClipperOp(OperationIntersection),&area,SubjectFill,ClipFill);
         done = true;
@@ -2415,8 +2441,8 @@ struct ShapeInfo{
         if(myWires.empty())
             foreachSubshape(myShape,GetWires(myWires,myRTree,myParams),TopAbs_WIRE);
 
-        // Now find the ture nearest point among the wires returned. Currently
-        // only closed wire has a ture nearest point, using OCC's
+        // Now find the true nearest point among the wires returned. Currently
+        // only closed wire has a true nearest point, using OCC's
         // BRepExtrema_DistShapeShape. We don't do this on open wires, because
         // we haven't implemented wire breaking on open wire yet, and I doubt
         // its usefulness.
@@ -3213,7 +3239,7 @@ void Area::toPath(Toolpath &path, const std::list<TopoDS_Shape> &shapes,
         (pstart.*setter)(resume_height);
 
     gp_Pnt plast,p;
-    // initial vertial rapid pull up to retraction (or start Z height if higher)
+    // initial vertical rapid pull up to retraction (or start Z height if higher)
     (p.*setter)(std::max(retraction,(pstart.*getter)()));
     addGCode(false,path,plast,p,"G0");
     plast = p;
@@ -3225,7 +3251,7 @@ void Area::toPath(Toolpath &path, const std::list<TopoDS_Shape> &shapes,
         plast = p;
         p = pstart;
     }
-    // vertial rapid down to feed start
+    // vertical rapid down to feed start
     addGCode(false,path,plast,p,"G0");
 
     plast = p;

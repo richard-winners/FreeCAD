@@ -28,12 +28,12 @@ import FreeCAD
 import FreeCADGui
 import Path
 import PathScripts.PathDressup as PathDressup
+import PathScripts.PathGeom as PathGeom
 import PathScripts.PathLog as PathLog
 import PathScripts.PathUtils as PathUtils
 import math
 
 from PySide import QtCore
-from PathScripts.PathGeom import PathGeom
 
 """LeadInOut Dressup MASHIN-CRC USE ROLL-ON ROLL-OFF to profile"""
 
@@ -59,7 +59,7 @@ class ObjectDressup:
         obj.addProperty("App::PropertyBool", "LeadIn", "Path", QtCore.QT_TRANSLATE_NOOP("App::Property", "Calculate roll-on to path"))
         obj.addProperty("App::PropertyBool", "LeadOut", "Path", QtCore.QT_TRANSLATE_NOOP("App::Property", "Calculate roll-off from path"))
         obj.addProperty("App::PropertyBool", "KeepToolDown", "Path", QtCore.QT_TRANSLATE_NOOP("App::Property", "Keep the Tool Down in Path"))
-        obj.addProperty("App::PropertyBool", "UseMashineCRC", "Path", QtCore.QT_TRANSLATE_NOOP("App::Property", "Use Mashine Cutter Radius Compensation /Tool Path Offset G41/G42"))
+        obj.addProperty("App::PropertyBool", "UseMachineCRC", "Path", QtCore.QT_TRANSLATE_NOOP("App::Property", "Use Machine Cutter Radius Compensation /Tool Path Offset G41/G42"))
         obj.addProperty("App::PropertyDistance", "Length", "Path", QtCore.QT_TRANSLATE_NOOP("App::Property", "Length or Radius of the approach"))
         obj.addProperty("App::PropertyEnumeration", "StyleOn", "Path", QtCore.QT_TRANSLATE_NOOP("Path_DressupLeadInOut", "The Style of LeadIn the Path"))
         obj.StyleOn = ["Arc", "Tangent", "Perpendicular"]
@@ -80,7 +80,7 @@ class ObjectDressup:
         obj.LeadIn = True
         obj.LeadOut = True
         obj.KeepToolDown = False
-        obj.UseMashineCRC = False
+        obj.UseMachineCRC = False
         obj.StyleOn = 'Arc'
         obj.StyleOff = 'Arc'
         obj.RadiusCenter = 'Radius'
@@ -93,7 +93,7 @@ class ObjectDressup:
         if not obj.Base.Path:
             return
         if obj.Length < 0:
-            PathLog.error(translate("Length/Radius positiv not Null\n"))
+            PathLog.error(translate("Length/Radius positive not Null")+"\n")
             obj.Length = 0.1
         self.wire, self.rapids = PathGeom.wireForPath(obj.Base.Path)
         obj.Path = self.generateLeadInOutCurve(obj)
@@ -169,7 +169,7 @@ class ObjectDressup:
             results.append(extendcommand)
         extendcommand = Path.Command('G1', {"X": leadstart.x, "Y": leadstart.y, "Z": p1.z, "F": vertFeed})
         results.append(extendcommand)
-        if obj.UseMashineCRC:
+        if obj.UseMachineCRC:
                 if self.getDirectionOfPath(obj) == 'right':
                     results.append(Path.Command('G42', {'D': toolnummer}))
                 else:
@@ -185,7 +185,7 @@ class ObjectDressup:
         return results
 
     def getLeadEnd(self, obj, queue, action):
-        '''returns the  Gcode of LeadOut.'''
+        '''returns the Gcode of LeadOut.'''
         global currLocation
         results = []
         horizFeed = PathDressup.toolController(obj.Base).HorizFeed.Value
@@ -222,7 +222,7 @@ class ObjectDressup:
             results.append(extendcommand)
         else:
             PathLog.notice(" CURRENT_IN Perp")
-        if obj.UseMashineCRC:  # crc off
+        if obj.UseMachineCRC:  # crc off
             results.append(Path.Command('G40', {}))
         return results
 
@@ -320,7 +320,7 @@ class ViewProviderDressup:
         '''this makes sure that the base operation is added back to the project and visible'''
         FreeCADGui.ActiveDocument.getObject(arg1.Object.Base.Name).Visibility = True
         job = PathUtils.findParentJob(self.obj)
-        job.Proxy.addOperation(arg1.Object.Base)
+        job.Proxy.addOperation(arg1.Object.Base, arg1.Object)
         arg1.Object.Base = None
         return True
 
@@ -349,11 +349,11 @@ class CommandPathDressupLeadInOut:
         # check that the selection contains exactly what we want
         selection = FreeCADGui.Selection.getSelection()
         if len(selection) != 1:
-            PathLog.error(translate("Please select one path object\n"))
+            PathLog.error(translate("Please select one path object")+"\n")
             return
         baseObject = selection[0]
         if not baseObject.isDerivedFrom("Path::Feature"):
-            PathLog.error(translate("The selected object is not a path\n"))
+            PathLog.error(translate("The selected object is not a path")+"\n")
             return
         if baseObject.isDerivedFrom("Path::FeatureCompoundPython"):
             PathLog.error(translate("Please select a Profile object"))
@@ -365,10 +365,12 @@ class CommandPathDressupLeadInOut:
         FreeCADGui.addModule("PathScripts.PathUtils")
         FreeCADGui.doCommand('obj = FreeCAD.ActiveDocument.addObject("Path::FeaturePython", "LeadInOutDressup")')
         FreeCADGui.doCommand('dbo = PathScripts.PathDressupLeadInOut.ObjectDressup(obj)')
-        FreeCADGui.doCommand('obj.Base = FreeCAD.ActiveDocument.' + selection[0].Name)
+        FreeCADGui.doCommand('base = FreeCAD.ActiveDocument.' + selection[0].Name)
+        FreeCADGui.doCommand('job = PathScripts.PathUtils.findParentJob(base)')
+        FreeCADGui.doCommand('obj.Base = base')
+        FreeCADGui.doCommand('job.Proxy.addOperation(obj, base)')
         FreeCADGui.doCommand('PathScripts.PathDressupLeadInOut.ViewProviderDressup(obj.ViewObject)')
-        FreeCADGui.doCommand('PathScripts.PathUtils.addToJob(obj)')
-        FreeCADGui.doCommand('Gui.ActiveDocument.getObject(obj.Base.Name).Visibility = False')
+        FreeCADGui.doCommand('Gui.ActiveDocument.getObject(base.Name).Visibility = False')
         FreeCADGui.doCommand('dbo.setup(obj)')
         FreeCAD.ActiveDocument.commitTransaction()
         FreeCAD.ActiveDocument.recompute()

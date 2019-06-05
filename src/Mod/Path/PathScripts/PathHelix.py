@@ -48,7 +48,7 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
 
     def initCircularHoleOperation(self, obj):
         '''initCircularHoleOperation(obj) ... create helix specific properties.'''
-        obj.addProperty("App::PropertyEnumeration", "Direction", "Helix Drill", translate("PathHelix", "The direction of the circular cuts, clockwise (CW), or counter clockwise (CCW)"))
+        obj.addProperty("App::PropertyEnumeration", "Direction", "Helix Drill", translate("PathHelix", "The direction of the circular cuts, ClockWise (CW), or CounterClockWise (CCW)"))
         obj.Direction = ['CW', 'CCW']
 
         obj.addProperty("App::PropertyEnumeration", "StartSide", "Helix Drill", translate("PathHelix", "Start cutting from the inside or outside"))
@@ -187,15 +187,23 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
 
         return out
 
-    def opSetDefaultValues(self, obj):
+    def opSetDefaultValues(self, obj, job):
         obj.Direction = "CW"
         obj.StartSide = "Inside"
         obj.StepOver = 100
 
-def Create(name):
+def SetupProperties():
+    setup = []
+    setup.append("Direction")
+    setup.append("StartSide")
+    setup.append("StepOver")
+    return setup
+
+def Create(name, obj = None):
     '''Create(name) ... Creates and returns a Helix operation.'''
-    obj = FreeCAD.ActiveDocument.addObject("Path::FeaturePython", name)
-    proxy = ObjectHelix(obj)
+    if obj is None:
+        obj = FreeCAD.ActiveDocument.addObject("Path::FeaturePython", name)
+    proxy = ObjectHelix(obj, name)
     if obj.Proxy:
         proxy.findAllHoles(obj)
     return obj

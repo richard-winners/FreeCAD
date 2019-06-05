@@ -49,6 +49,7 @@
 #include "DrawViewCollection.h"
 #include "DrawViewPart.h"
 #include "DrawViewDimension.h"
+#include "DrawViewBalloon.h"
 
 #include <Mod/TechDraw/App/DrawPagePy.h>  // generated from DrawPagePy.xml
 
@@ -81,7 +82,9 @@ DrawPage::DrawPage(void)
 
     ADD_PROPERTY_TYPE(KeepUpdated, (autoUpdate), group, (App::PropertyType)(App::Prop_None), "Keep page in sync with model");
     ADD_PROPERTY_TYPE(Template, (0), group, (App::PropertyType)(App::Prop_None), "Attached Template");
+    Template.setScope(App::LinkScope::Global);
     ADD_PROPERTY_TYPE(Views, (0), group, (App::PropertyType)(App::Prop_None), "Attached Views");
+    Views.setScope(App::LinkScope::Global);
 
     // Projection Properties
     ProjectionType.setEnums(ProjectionTypeEnums);
@@ -97,8 +100,10 @@ DrawPage::DrawPage(void)
         ADD_PROPERTY(ProjectionType, ((long)projType));
     }
 
-    ADD_PROPERTY_TYPE(Scale, (1.0), group, App::Prop_None, "Scale factor for this Page");
+    ADD_PROPERTY_TYPE(Scale, (1.0), group, (App::PropertyType)(App::Prop_None), "Scale factor for this Page");
     Scale.setConstraints(&scaleRange);
+    double defScale = hGrp->GetFloat("DefaultScale",1.0);
+    Scale.setValue(defScale);
 }
 
 DrawPage::~DrawPage()
@@ -137,17 +142,21 @@ void DrawPage::onChanged(const App::Property* prop)
         }
     } else if(prop == &Scale) {
         // touch all views in the Page as they may be dependent on this scale
-        const std::vector<App::DocumentObject*> &vals = Views.getValues();
-        for(std::vector<App::DocumentObject *>::const_iterator it = vals.begin(); it < vals.end(); ++it) {
-            TechDraw::DrawView *view = dynamic_cast<TechDraw::DrawView *>(*it);
-            if (view != NULL && view->ScaleType.isValue("Page")) {
-                if(std::abs(view->Scale.getValue() - Scale.getValue()) > FLT_EPSILON) {
-                   view->Scale.setValue(Scale.getValue());
+        // WF: not sure this loop is required.  Views figure out their scale as required. but maybe
+        //     this is needed just to mark the Views to recompute??
+        if (!isRestoring()) {
+            const std::vector<App::DocumentObject*> &vals = Views.getValues();
+            for(std::vector<App::DocumentObject *>::const_iterator it = vals.begin(); it < vals.end(); ++it) {
+                TechDraw::DrawView *view = dynamic_cast<TechDraw::DrawView *>(*it);
+                if (view != NULL && view->ScaleType.isValue("Page")) {
+                    if(std::abs(view->Scale.getValue() - Scale.getValue()) > FLT_EPSILON) {
+                       view->Scale.setValue(Scale.getValue());
+                    }
                 }
             }
         }
     } else if (prop == &ProjectionType) {
-      // touch all ortho views in the Page as they may be dependent on Projection Type
+      // touch all ortho views in the Page as they may be dependent on Projection Type  //(is this true?)
       const std::vector<App::DocumentObject*> &vals = Views.getValues();
       for(std::vector<App::DocumentObject *>::const_iterator it = vals.begin(); it < vals.end(); ++it) {
           TechDraw::DrawProjGroup *view = dynamic_cast<TechDraw::DrawProjGroup *>(*it);
@@ -210,7 +219,7 @@ double DrawPage::getPageWidth() const
         return templ->getWidth();
     }
 
-    throw Base::Exception("Template not set for Page");
+    throw Base::RuntimeError("Template not set for Page");
 }
 
 double DrawPage::getPageHeight() const
@@ -225,7 +234,7 @@ double DrawPage::getPageHeight() const
         }
     }
 
-    throw Base::Exception("Template not set for Page");
+    throw Base::RuntimeError("Template not set for Page");
 }
 
 const char * DrawPage::getPageOrientation() const
@@ -240,7 +249,7 @@ const char * DrawPage::getPageOrientation() const
           return templ->Orientation.getValueAsString();
         }
     }
-    throw Base::Exception("Template not set for Page");
+    throw Base::RuntimeError("Template not set for Page");
 }
 
 int DrawPage::addView(App::DocumentObject *docObj)
@@ -249,8 +258,9 @@ int DrawPage::addView(App::DocumentObject *docObj)
         return -1;
     DrawView* view = static_cast<DrawView*>(docObj);
 
-    //position all new views in center of Page (exceptDVDimension)
-    if (!docObj->isDerivedFrom(TechDraw::DrawViewDimension::getClassTypeId())) {
+      //position all new views in center of Page (exceptDVDimension)
+    if (!docObj->isDerivedFrom(TechDraw::DrawViewDimension::getClassTypeId()) &&
+        !docObj->isDerivedFrom(TechDraw::DrawViewBalloon::getClassTypeId())) {
         view->X.setValue(getPageWidth()/2.0);
         view->Y.setValue(getPageHeight()/2.0);
     }
@@ -318,26 +328,41 @@ void DrawPage::onDocumentRestored()
     bool autoUpdate = hGrp->GetBool("KeepPagesUpToDate", 1l);
     KeepUpdated.setValue(autoUpdate);
 
-    std::vector<App::DocumentObject*> featViews = Views.getValues();
+    std::vector<App::DocumentObject*> featViews = getAllViews();
     std::vector<App::DocumentObject*>::const_iterator it = featViews.begin();
     //first, make sure all the Parts have been executed so GeometryObjects exist
     for(; it != featViews.end(); ++it) {
         TechDraw::DrawViewPart *part = dynamic_cast<TechDraw::DrawViewPart *>(*it);
         if (part != nullptr &&
             !part->hasGeometry()) {
-            part->touch();
+            part->recomputeFeature();
         }
     }
     //second, make sure all the Dimensions have been executed so Measurements have References
     for(it = featViews.begin(); it != featViews.end(); ++it) {
         TechDraw::DrawViewDimension *dim = dynamic_cast<TechDraw::DrawViewDimension *>(*it);
-        if (dim != nullptr &&
-            !dim->has2DReferences()) {
-            dim->touch();
+        if (dim != nullptr) {
+            dim->recomputeFeature();
         }
     }
-    recompute();
     App::DocumentObject::onDocumentRestored();
+}
+
+std::vector<App::DocumentObject*> DrawPage::getAllViews(void) 
+{
+    auto views = Views.getValues();   //list of docObjects
+    std::vector<App::DocumentObject*> allViews;
+    for (auto& v: views) {
+        allViews.push_back(v);
+        if (v->isDerivedFrom(TechDraw::DrawProjGroup::getClassTypeId())) {
+            TechDraw::DrawProjGroup* dpg = static_cast<TechDraw::DrawProjGroup*>(v);
+            if (dpg != nullptr) {                                              //can't really happen!
+              std::vector<App::DocumentObject*> pgViews = dpg->Views.getValues();
+              allViews.insert(allViews.end(),pgViews.begin(),pgViews.end());
+            }
+        }
+    }
+    return allViews;
 }
 
 void DrawPage::unsetupObject()
@@ -422,7 +447,7 @@ void DrawPage::Restore(Base::XMLReader &reader)
         }
 #ifndef FC_DEBUG
         catch (...) {
-            Base::Console().Error("PropertyContainer::Restore: Unknown C++ exception thrown");
+            Base::Console().Error("PropertyContainer::Restore: Unknown C++ exception thrown\n");
         }
 #endif
 

@@ -34,6 +34,12 @@
 #include <Inventor/SbLine.h>
 #include <Inventor/SbPlane.h>
 
+#if !defined(FC_OS_MACOSX)
+# include <GL/gl.h>
+# include <GL/glu.h>
+# include <GL/glext.h>
+#endif
+
 static unsigned char fps2dfont[][12] = {
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 }, //
     {  0,  0, 12, 12,  0,  8, 12, 12, 12, 12, 12,  0 }, // !
@@ -199,21 +205,20 @@ QWidget* SIM::Coin3D::Quarter::SoQTQuarterAdaptor::getGLWidget() const
 
 void SIM::Coin3D::Quarter::SoQTQuarterAdaptor::setCameraType(SoType type)
 {
-    if(!getSoRenderManager()->getCamera()->isOfType(SoPerspectiveCamera::getClassTypeId()) &&
-       !getSoRenderManager()->getCamera()->isOfType(SoOrthographicCamera::getClassTypeId())) {
+    SoCamera* cam = getSoRenderManager()->getCamera();
+    if (cam && !cam->isOfType(SoPerspectiveCamera::getClassTypeId()) &&
+               !cam->isOfType(SoOrthographicCamera::getClassTypeId())) {
         Base::Console().Warning("Quarter::setCameraType",
                                 "Only SoPerspectiveCamera and SoOrthographicCamera is supported.");
         return;
     }
 
 
-    SoCamera* cam = getSoRenderManager()->getCamera();
     SoType perspectivetype = SoPerspectiveCamera::getClassTypeId();
     SbBool oldisperspective = cam ? cam->getTypeId().isDerivedFrom(perspectivetype) : false;
     SbBool newisperspective = type.isDerivedFrom(perspectivetype);
 
-    if((oldisperspective && newisperspective) ||
-       (!oldisperspective && !newisperspective)) // Same old, same old..
+    if (oldisperspective == newisperspective) // Same old, same old..
         return;
 
 

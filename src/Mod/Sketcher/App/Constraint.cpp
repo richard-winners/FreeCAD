@@ -74,30 +74,6 @@ Constraint::Constraint()
     tag = gen();
 }
 
-Constraint::Constraint(const Constraint& from)
-: Value(from.Value),
-  Type(from.Type),
-  AlignmentType(from.AlignmentType),
-  Name(from.Name),
-  First(from.First),
-  FirstPos(from.FirstPos),
-  Second(from.Second),
-  SecondPos(from.SecondPos),
-  Third(from.Third),
-  ThirdPos(from.ThirdPos),
-  LabelDistance(from.LabelDistance),
-  LabelPosition(from.LabelPosition),
-  isDriving(from.isDriving),
-  InternalAlignmentIndex(from.InternalAlignmentIndex),
-  isInVirtualSpace(from.isInVirtualSpace),
-  tag(from.tag)
-{
-}
-
-Constraint::~Constraint()
-{
-}
-
 Constraint *Constraint::clone(void) const
 {
     return new Constraint(*this);
@@ -136,6 +112,7 @@ Quantity Constraint::getPresentationValue() const
     switch (Type) {
     case Distance:
     case Radius:
+    case Diameter:
     case DistanceX:
     case DistanceY:
         quantity.setValue(Value);
@@ -173,10 +150,10 @@ void Constraint::Save (Writer &writer) const
     << "Name=\""                        <<  encodeName              << "\" "
     << "Type=\""                        <<  (int)Type               << "\" ";
     if(this->Type==InternalAlignment)
-        writer.Stream() 
+        writer.Stream()
         << "InternalAlignmentType=\""   <<  (int)AlignmentType      << "\" "
         << "InternalAlignmentIndex=\""  <<  InternalAlignmentIndex  << "\" ";
-    writer.Stream()     
+    writer.Stream()
     << "Value=\""                       <<  Value                   << "\" "
     << "First=\""                       <<  First                   << "\" "
     << "FirstPos=\""                    <<  (int)  FirstPos         << "\" "
@@ -187,8 +164,8 @@ void Constraint::Save (Writer &writer) const
     << "LabelDistance=\""               <<  LabelDistance           << "\" "
     << "LabelPosition=\""               <<  LabelPosition           << "\" "
     << "IsDriving=\""                   <<  (int)isDriving          << "\" "
-    << "IsInVirtualSpace=\""            <<  (int)isInVirtualSpace          << "\" />"
-    
+    << "IsInVirtualSpace=\""            <<  (int)isInVirtualSpace   << "\" />"
+
     << std::endl;
 }
 

@@ -73,7 +73,7 @@ An exception is raised if the face is not triangulated.
 				<UserDocu>Validate the face.</UserDocu>
 			</Documentation>
 		</Methode>
-        <Methode Name="curveOnSurface">
+        <Methode Name="curveOnSurface" Const="true">
             <Documentation>
                 <UserDocu>
 curveonSurface(Edge) -> None or tuple
@@ -84,11 +84,6 @@ of curve and and parameter range is returned.
                 </UserDocu>
             </Documentation>
         </Methode>
-        <Methode Name="setTolerance">
-			<Documentation>
-				<UserDocu>Set the tolerance for the face.</UserDocu>
-			</Documentation>
-		</Methode>
 		<Attribute Name="Tolerance">
 			<Documentation>
 				<UserDocu>Set or get the tolerance of the vertex</UserDocu>

@@ -32,6 +32,7 @@
 # include <Geom_Plane.hxx>
 # include <Precision.hxx>
 # include <QMessageBox>
+# include <QAction>
 # include <QRegExp>
 # include <QTextStream>
 # include <TopoDS.hxx>
@@ -423,10 +424,15 @@ const std::string TaskFemConstraintContact::getReferences() const
 }
 
 /* Note: */
-double TaskFemConstraintContact::get_Slope() const{return ui->spSlope->value();}
-double TaskFemConstraintContact::get_Friction() const{return ui->spFriction->value();}
+double TaskFemConstraintContact::get_Slope() const
+{
+    return ui->spSlope->rawValue();
+}
 
-
+double TaskFemConstraintContact::get_Friction() const
+{
+    return ui->spFriction->value();
+}
 
 void TaskFemConstraintContact::changeEvent(QEvent *)
 {

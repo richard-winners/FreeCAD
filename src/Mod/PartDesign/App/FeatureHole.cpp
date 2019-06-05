@@ -51,6 +51,7 @@
 # include <Standard_Version.hxx>
 #endif
 
+#include <QCoreApplication>
 #include <Base/Placement.h>
 #include <Base/Exception.h>
 #include <Base/Tools.h>
@@ -61,6 +62,8 @@
 #include "FeatureHole.h"
 
 using namespace PartDesign;
+
+/* TRANSLATOR PartDesign::Hole */
 
 const char* Hole::DepthTypeEnums[]                   = { "Dimension", "ThroughAll", /*, "UpToFirst", */ NULL };
 const char* Hole::ThreadTypeEnums[]                  = { "None", "ISOMetricProfile", "ISOMetricFineProfile", "UNC", "UNF", "UNEF", NULL};
@@ -948,8 +951,13 @@ App::DocumentObjectExecReturn *Hole::execute(void)
     TopoDS_Shape base;
     try {
         base = getBaseShape();
-    } catch (const Base::Exception&) {
-        return new App::DocumentObjectExecReturn("No sketch support and no base shape: Please tell me where to remove the material of the hole!");
+    }
+    catch (const Base::Exception&) {
+        std::string text(QT_TR_NOOP("The requested feature cannot be created. The reason may be that:\n\n"
+                                    "  \xe2\x80\xa2 the active Body does not contain a base shape, so there is no\n"
+                                    "  material to be removed;\n"
+                                    "  \xe2\x80\xa2 the selected sketch does not belong to the active Body."));
+        return new App::DocumentObjectExecReturn(text);
     }
 
     try {
@@ -969,6 +977,8 @@ App::DocumentObjectExecReturn *Hole::execute(void)
 
         // Get vector normal to profile
         Base::Vector3d  SketchVector = getProfileNormal();
+        if (Reversed.getValue())
+            SketchVector *= -1.0;
 
         // Define this as zDir
         gp_Vec zDir(SketchVector.x, SketchVector.y, SketchVector.z);
@@ -984,6 +994,9 @@ App::DocumentObjectExecReturn *Hole::execute(void)
             xDir = gp_Vec(zDir.Y(), -zDir.X(), 0);
         else
             xDir = gp_Vec(0, -zDir.Z(), zDir.Y());
+
+        // Normalize xDir; this is needed as the computation above does not necessarily give a unit-length vector.
+        xDir.Normalize();
 
         if ( method == "Dimension" )
             length = Depth.getValue();
@@ -1250,12 +1263,19 @@ App::DocumentObjectExecReturn *Hole::execute(void)
             builder.Add(holes, transformer.Shape() );
         }
 
-        holes.Move( this->getLocation().Inverted() );
+        // Do not apply a placement to the AddSubShape property (#0003547)
+        //holes.Move( this->getLocation().Inverted() );
 
         // set the subtractive shape property for later usage in e.g. pattern
         this->AddSubShape.setValue( holes );
 
         remapSupportShape(base);
+
+        int solidCount = countSolids(base);
+        if (solidCount > 1) {
+            return new App::DocumentObjectExecReturn("Hole: Result has multiple solids. This is not supported at this time.");
+        }
+
         this->Shape.setValue(base);
 
         return App::DocumentObject::StdReturn;

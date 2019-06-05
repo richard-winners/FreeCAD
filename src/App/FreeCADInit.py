@@ -35,7 +35,7 @@ import FreeCAD
 
 def removeFromPath(module_name):
 	"""removes the module from the sys.path. The entry point for imports
-		will therfor always be FreeCAD.
+		will therefore always be FreeCAD.
 		eg.: from FreeCAD.Module.submodule import function"""
 	import sys, os
 	paths = sys.path
@@ -67,7 +67,7 @@ def InitApplications():
 	Lib64Dir = FreeCAD.getHomePath()+'lib64'
 	Lib64Dir = os.path.realpath(Lib64Dir)
 	AddPath = FreeCAD.ConfigGet("AdditionalModulePaths").split(";")
-	HomeMod = FreeCAD.ConfigGet("UserAppData")+"Mod"
+	HomeMod = FreeCAD.getUserAppDataDir()+"Mod"
 	HomeMod = os.path.realpath(HomeMod)
 	MacroDir = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Macro").GetString("MacroPath")
 	MacroMod = os.path.realpath(MacroDir+"/Mod")
@@ -105,7 +105,8 @@ def InitApplications():
 	#Err( AddModPaths)
 	# add also this path so that all modules search for libraries
 	# they depend on first here
-	PathExtension = BinDir + os.pathsep
+	PathExtension = []
+	PathExtension.append(BinDir)
 
 	# prepend all module paths to Python search path
 	Log('Init:   Searching for modules...\n')
@@ -126,7 +127,7 @@ def InitApplications():
 	for Dir in ModDict.values():
 		if ((Dir != '') & (Dir != 'CVS') & (Dir != '__init__.py')):
 			sys.path.insert(0,Dir)
-			PathExtension += Dir + os.pathsep
+			PathExtension.append(Dir)
 			InstallFile = os.path.join(Dir,"Init.py")
 			if (os.path.exists(InstallFile)):
 				try:
@@ -161,29 +162,50 @@ def InitApplications():
 					try:
 						importlib.import_module(freecad_module_name + '.init')
 						Log('Init: Initializing ' + freecad_module_name + '... done\n')
-					except ImportError as error:
-						Err('During initialization the error ' + str(error) + ' occurred in ' + freecad_module_name + '\n')
+					except Exception as inst:
+						Err('During initialization the error ' + str(inst) + ' occurred in ' + freecad_module_name + '\n')
+						Err('-'*80+'\n')
+						Err(traceback.format_exc())
+						Err('-'*80+'\n')
+						Log('Init:      Initializing ' + freecad_module_name + '... failed\n')
+						Log('-'*80+'\n')
+						Log(traceback.format_exc())
+						Log('-'*80+'\n')
 				else:
 					Log('Init: No init module found in ' + freecad_module_name + ', skipping\n')
 	except ImportError as inst:
 		Err('During initialization the error ' + str(inst) + ' occurred\n')
 
 	Log("Using "+ModDir+" as module path!\n")
+	# In certain cases the PathExtension list can contain invalid strings. We concatenate them to a single string
+	# but check that the output is a valid string
+	PathEnvironment = PathExtension.pop(0) + os.pathsep
+	for path in PathExtension:
+		try:
+			PathEnvironment += path + os.pathsep
+		except UnicodeDecodeError:
+			Wrn('Filter invalid module path: u{}\n'.format(repr(path)))
+			pass
+
 	# new paths must be prepended to avoid to load a wrong version of a library
 	try:
-		os.environ["PATH"] = PathExtension + os.environ["PATH"]
+		os.environ["PATH"] = PathEnvironment + os.environ["PATH"]
 	except UnicodeDecodeError:
 		# See #0002238. FIXME: check again once ported to Python 3.x
-		Log('UnicodeDecodeError was raised when concatenating unicode string with PATH. Try to remove non-ascii paths...')
+		Log('UnicodeDecodeError was raised when concatenating unicode string with PATH. Try to remove non-ascii paths...\n')
 		path = os.environ["PATH"].split(os.pathsep)
 		cleanpath=[]
 		for i in path:
 			if test_ascii(i):
 				cleanpath.append(i)
-		os.environ["PATH"] = PathExtension + os.pathsep.join(cleanpath)
+		os.environ["PATH"] = PathEnvironment + os.pathsep.join(cleanpath)
+		Log('done\n')
+	except UnicodeEncodeError:
+		Log('UnicodeEncodeError was raised when concatenating unicode string with PATH. Try to replace non-ascii chars...\n')
+		os.environ["PATH"] = PathEnvironment.encode(errors='replace') + os.environ["PATH"]
 		Log('done\n')
 	except KeyError:
-		os.environ["PATH"] = PathExtension
+		os.environ["PATH"] = PathEnvironment
 	path = os.environ["PATH"].split(os.pathsep)
 	Log("System path after init:\n")
 	for i in path:
@@ -208,10 +230,20 @@ test_ascii = lambda s: all(ord(c) < 128 for c in s)
 #store the cmake variales
 App.__cmake__ = cmake;
 
+#store unit test names
+App.__unit_test__ = []
+
 Log ('Init: starting App::FreeCADInit.py\n')
 
 # init every application by importing Init.py
-InitApplications()
+try:
+	import traceback
+	InitApplications()
+except Exception as e:
+	Err('Error in InitApplications ' + str(e) + '\n')
+	Err('-'*80+'\n')
+	Err(traceback.format_exc())
+	Err('-'*80+'\n')
 
 FreeCAD.addImportType("FreeCAD document (*.FCStd)","FreeCAD")
 
@@ -274,7 +306,13 @@ App.Units.KiloPascal    = App.Units.Quantity('kPa')
 App.Units.MegaPascal    = App.Units.Quantity('MPa')
 App.Units.GigaPascal    = App.Units.Quantity('GPa')
 
+App.Units.PoundForce    = App.Units.Quantity().PoundForce
+App.Units.Torr          = App.Units.Quantity().Torr
+App.Units.mTorr         = App.Units.Quantity().mTorr
+App.Units.yTorr         = App.Units.Quantity().yTorr
+
 App.Units.PSI           = App.Units.Quantity('psi')
+App.Units.KSI           = App.Units.Quantity('ksi')
 
 App.Units.Watt          = App.Units.Quantity('W')
 App.Units.VoltAmpere    = App.Units.Quantity('VA')
@@ -293,12 +331,15 @@ App.Units.KMH           = App.Units.Quantity('km/h')
 App.Units.Degree        = App.Units.Quantity('deg')
 App.Units.Radian        = App.Units.Quantity('rad')
 App.Units.Gon           = App.Units.Quantity('gon')
+App.Units.AngularMinute = App.Units.Quantity().AngularMinute
+App.Units.AngularSecond = App.Units.Quantity().AngularSecond
 
 App.Units.Length        = App.Units.Unit(1)
 App.Units.Area          = App.Units.Unit(2)
 App.Units.Volume        = App.Units.Unit(3)
 App.Units.Mass          = App.Units.Unit(0,1) 
 App.Units.Angle         = App.Units.Unit(0,0,0,0,0,0,0,1) 
+App.Units.Density       = App.Units.Unit(-3,1)
 
 App.Units.TimeSpan      = App.Units.Unit(0,0,1) 
 App.Units.Velocity      = App.Units.Unit(1,0,-1) 
@@ -310,13 +351,27 @@ App.Units.ElectricPotential = App.Units.Unit(2,1,-3,-1)
 App.Units.AmountOfSubstance = App.Units.Unit(0,0,0,0,0,1)
 App.Units.LuminousIntensity = App.Units.Unit(0,0,0,0,0,0,1)
 
-App.Units.Stress        = App.Units.Unit(-1,1,-2) 
-App.Units.Pressure      = App.Units.Unit(-1,1,-2) 
+# Pressure
+App.Units.CompressiveStrength     = App.Units.Unit(-1,1,-2)
+App.Units.Pressure                = App.Units.Unit(-1,1,-2)
+App.Units.ShearModulus            = App.Units.Unit(-1,1,-2)
+App.Units.Stress                  = App.Units.Unit(-1,1,-2)
+App.Units.UltimateTensileStrength = App.Units.Unit(-1,1,-2)
+App.Units.YieldStrength           = App.Units.Unit(-1,1,-2)
+App.Units.YoungsModulus           = App.Units.Unit(-1,1,-2)
 
 App.Units.Force         = App.Units.Unit(1,1,-2) 
 App.Units.Work          = App.Units.Unit(2,1,-2) 
 App.Units.Power         = App.Units.Unit(2,1,-3) 
 
+App.Units.SpecificEnergy               = App.Units.Unit(2,0,-2)
+App.Units.ThermalConductivity          = App.Units.Unit(1,1,-3,0,-1)
+App.Units.ThermalExpansionCoefficient  = App.Units.Unit(0,0,0,0,-1)
+App.Units.SpecificHeat                 = App.Units.Unit(2,0,-2,0,-1)
+App.Units.ThermalTransferCoefficient   = App.Units.Unit(0,1,-3,0,-1)
+App.Units.HeatFlux                     = App.Units.Unit(0,1,-3,0,0)
+App.Units.DynamicViscosity             = App.Units.Unit(-1,1,-1)
+App.Units.KinematicViscosity           = App.Units.Unit(2,0,-1)
 
 # clean up namespace
 del(InitApplications)

@@ -77,6 +77,7 @@
 #include <Base/RotationPy.h>
 #include <Base/Sequencer.h>
 #include <Base/Tools.h>
+#include <Base/Translate.h>
 #include <Base/UnitsApi.h>
 #include <Base/QuantityPy.h>
 #include <Base/UnitPy.h>
@@ -120,7 +121,6 @@
 
 #include <boost/tokenizer.hpp>
 #include <boost/token_functions.hpp>
-#include <boost/signals.hpp>
 #include <boost/bind.hpp>
 #include <boost/version.hpp>
 #include <QDir>
@@ -138,6 +138,10 @@ using namespace boost::program_options;
 #include <App/CMakeScript.h>
 
 #ifdef _MSC_VER // New handler for Microsoft Visual C++ compiler
+# if !defined(_DEBUG) && defined(HAVE_SEH)
+# define FC_SE_TRANSLATOR
+# endif
+
 # include <new.h>
 # include <eh.h> // VC exception handling
 #else // Ansi C/C++ new handler
@@ -206,11 +210,42 @@ PyDoc_STRVAR(FreeCAD_doc,
 PyDoc_STRVAR(Console_doc,
      "FreeCAD Console\n"
     );
-    
+
 PyDoc_STRVAR(Base_doc,
     "The Base module contains the classes for the geometric basics\n"
     "like vector, matrix, bounding box, placement, rotation, axis, ...\n"
     );
+
+#if PY_MAJOR_VERSION >= 3
+// This is called via the PyImport_AppendInittab mechanism called
+// during initialization, to make the built-in __FreeCADBase__
+// module known to Python.
+PyMODINIT_FUNC
+init_freecad_base_module(void)
+{
+    static struct PyModuleDef BaseModuleDef = {
+        PyModuleDef_HEAD_INIT,
+        "__FreeCADBase__", Base_doc, -1,
+        NULL, NULL, NULL, NULL, NULL
+    };
+    return PyModule_Create(&BaseModuleDef);
+}
+
+// Set in inside Application
+static PyMethodDef* __AppMethods = nullptr;
+
+PyMODINIT_FUNC
+init_freecad_module(void)
+{
+    static struct PyModuleDef FreeCADModuleDef = {
+        PyModuleDef_HEAD_INIT,
+        "FreeCAD", FreeCAD_doc, -1,
+        __AppMethods,
+        NULL, NULL, NULL, NULL
+    };
+    return PyModule_Create(&FreeCADModuleDef);
+}
+#endif
 
 Application::Application(std::map<std::string,std::string> &mConfig)
   : _mConfig(mConfig), _pActiveDoc(0)
@@ -223,14 +258,15 @@ Application::Application(std::map<std::string,std::string> &mConfig)
     // setting up Python binding
     Base::PyGILStateLocker lock;
 #if PY_MAJOR_VERSION >= 3
-    static struct PyModuleDef FreeCADModuleDef = {
-        PyModuleDef_HEAD_INIT,
-        "FreeCAD", FreeCAD_doc, -1,
-        Application::Methods,
-        NULL, NULL, NULL, NULL
-    };
-    PyObject* pAppModule = PyModule_Create(&FreeCADModuleDef);
-    _PyImport_FixupBuiltin(pAppModule, "FreeCAD");
+    PyObject* modules = PyImport_GetModuleDict();
+
+    __AppMethods = Application::Methods;
+    PyObject* pAppModule = PyImport_ImportModule ("FreeCAD");
+    if (!pAppModule) {
+        PyErr_Clear();
+        pAppModule = init_freecad_module();
+        PyDict_SetItemString(modules, "FreeCAD", pAppModule);
+    }
 #else
     PyObject* pAppModule = Py_InitModule3("FreeCAD", Application::Methods, FreeCAD_doc);
 #endif
@@ -265,13 +301,12 @@ Application::Application(std::map<std::string,std::string> &mConfig)
     // remove these types from the FreeCAD module.
 
 #if PY_MAJOR_VERSION >= 3
-    static struct PyModuleDef BaseModuleDef = {
-        PyModuleDef_HEAD_INIT,
-        "__FreeCADBase__", Base_doc, -1,
-        NULL, NULL, NULL, NULL, NULL
-    };
-    PyObject* pBaseModule = PyModule_Create(&BaseModuleDef);
-    _PyImport_FixupBuiltin(pBaseModule, "__FreeCADBase__");
+    PyObject* pBaseModule = PyImport_ImportModule ("__FreeCADBase__");
+    if (!pBaseModule) {
+        PyErr_Clear();
+        pBaseModule = init_freecad_base_module();
+        PyDict_SetItemString(modules, "__FreeCADBase__", pBaseModule);
+    }
 #else
     PyObject* pBaseModule = Py_InitModule3("__FreeCADBase__", NULL, Base_doc);
 #endif
@@ -295,6 +330,11 @@ Application::Application(std::map<std::string,std::string> &mConfig)
     PyModule_AddObject(pAppModule, "Base", pBaseModule);
     Py_INCREF(pConsoleModule);
     PyModule_AddObject(pAppModule, "Console", pConsoleModule);
+
+    // Translate module
+    PyObject* pTranslateModule = (new Base::Translate)->module().ptr();
+    Py_INCREF(pTranslateModule);
+    PyModule_AddObject(pAppModule, "Qt", pTranslateModule);
 
     //insert Units module
 #if PY_MAJOR_VERSION >= 3
@@ -385,13 +425,23 @@ Document* Application::newDocument(const char * Name, const char * UserName)
 
 
     // connect the signals to the application for the new document
+    _pActiveDoc->signalBeforeChange.connect(boost::bind(&App::Application::slotBeforeChangeDocument, this, _1, _2));
+    _pActiveDoc->signalChanged.connect(boost::bind(&App::Application::slotChangedDocument, this, _1, _2));
     _pActiveDoc->signalNewObject.connect(boost::bind(&App::Application::slotNewObject, this, _1));
     _pActiveDoc->signalDeletedObject.connect(boost::bind(&App::Application::slotDeletedObject, this, _1));
+    _pActiveDoc->signalBeforeChangeObject.connect(boost::bind(&App::Application::slotBeforeChangeObject, this, _1, _2));
     _pActiveDoc->signalChangedObject.connect(boost::bind(&App::Application::slotChangedObject, this, _1, _2));
     _pActiveDoc->signalRelabelObject.connect(boost::bind(&App::Application::slotRelabelObject, this, _1));
     _pActiveDoc->signalActivatedObject.connect(boost::bind(&App::Application::slotActivatedObject, this, _1));
     _pActiveDoc->signalUndo.connect(boost::bind(&App::Application::slotUndoDocument, this, _1));
     _pActiveDoc->signalRedo.connect(boost::bind(&App::Application::slotRedoDocument, this, _1));
+    _pActiveDoc->signalRecomputedObject.connect(boost::bind(&App::Application::slotRecomputedObject, this, _1));
+    _pActiveDoc->signalRecomputed.connect(boost::bind(&App::Application::slotRecomputed, this, _1));
+    _pActiveDoc->signalOpenTransaction.connect(boost::bind(&App::Application::slotOpenTransaction, this, _1, _2));
+    _pActiveDoc->signalCommitTransaction.connect(boost::bind(&App::Application::slotCommitTransaction, this, _1));
+    _pActiveDoc->signalAbortTransaction.connect(boost::bind(&App::Application::slotAbortTransaction, this, _1));
+    _pActiveDoc->signalStartSave.connect(boost::bind(&App::Application::slotStartSaveDocument, this, _1, _2));
+    _pActiveDoc->signalFinishSave.connect(boost::bind(&App::Application::slotFinishSaveDocument, this, _1, _2));
 
     // make sure that the active document is set in case no GUI is up
     {
@@ -941,6 +991,16 @@ std::map<std::string, std::string> Application::getExportFilters(void) const
 
 //**************************************************************************
 // signaling
+void Application::slotBeforeChangeDocument(const App::Document& doc, const Property& prop)
+{
+    this->signalBeforeChangeDocument(doc, prop);
+}
+
+void Application::slotChangedDocument(const App::Document& doc, const Property& prop)
+{
+    this->signalChangedDocument(doc, prop);
+}
+
 void Application::slotNewObject(const App::DocumentObject&O)
 {
     this->signalNewObject(O);
@@ -949,6 +1009,11 @@ void Application::slotNewObject(const App::DocumentObject&O)
 void Application::slotDeletedObject(const App::DocumentObject&O)
 {
     this->signalDeletedObject(O);
+}
+
+void Application::slotBeforeChangeObject(const DocumentObject& O, const Property& Prop)
+{
+    this->signalBeforeChangeObject(O, Prop);
 }
 
 void Application::slotChangedObject(const App::DocumentObject&O, const App::Property& P)
@@ -974,6 +1039,41 @@ void Application::slotUndoDocument(const App::Document& d)
 void Application::slotRedoDocument(const App::Document& d)
 {
     this->signalRedoDocument(d);
+}
+
+void Application::slotRecomputedObject(const DocumentObject& obj)
+{
+    this->signalObjectRecomputed(obj);
+}
+
+void Application::slotRecomputed(const Document& doc)
+{
+    this->signalRecomputed(doc);
+}
+
+void Application::slotOpenTransaction(const Document& d, string s)
+{
+    this->signalOpenTransaction(d, s);
+}
+
+void Application::slotCommitTransaction(const Document& d)
+{
+    this->signalCommitTransaction(d);
+}
+
+void Application::slotAbortTransaction(const Document& d)
+{
+    this->signalAbortTransaction(d);
+}
+
+void Application::slotStartSaveDocument(const App::Document& doc, const std::string& filename)
+{
+    this->signalStartSaveDocument(doc, filename);
+}
+
+void Application::slotFinishSaveDocument(const App::Document& doc, const std::string& filename)
+{
+    this->signalFinishSaveDocument(doc, filename);
 }
 
 //**************************************************************************
@@ -1015,7 +1115,7 @@ void Application::destruct(void)
     _pcSysParamMngr = 0;
     _pcUserParamMngr = 0;
 
-    // not initialized or doubel destruct!
+    // not initialized or double destruct!
     assert(_pcSingleton);
     delete _pcSingleton;
 
@@ -1111,11 +1211,11 @@ void printBacktrace(size_t skip=0)
 void segmentation_fault_handler(int sig)
 {
 #if defined(FC_OS_LINUX)
+    (void)sig;
     std::cerr << "Program received signal SIGSEGV, Segmentation fault.\n";
     printBacktrace(2);
     exit(1);
-#endif
-
+#else
     switch (sig) {
         case SIGSEGV:
             std::cerr << "Illegal storage access..." << std::endl;
@@ -1133,9 +1233,10 @@ void segmentation_fault_handler(int sig)
             std::cerr << "Unknown error occurred..." << std::endl;
             break;
     }
+#endif // FC_OS_LINUX
 }
 
-void my_terminate_handler()
+void unhandled_exception_handler()
 {
     std::cerr << "Terminating..." << std::endl;
 }
@@ -1151,23 +1252,28 @@ void unexpection_error_handler()
 #endif
 }
 
-#ifdef _MSC_VER // Microsoft compiler
-
-void my_trans_func( unsigned int code, EXCEPTION_POINTERS* pExp )
+#if defined(FC_SE_TRANSLATOR) // Microsoft compiler
+void my_se_translator_filter(unsigned int code, EXCEPTION_POINTERS* pExp)
 {
+    Q_UNUSED(pExp)
+    switch (code)
+    {
+    case EXCEPTION_ACCESS_VIOLATION:
+        throw Base::AccessViolation();
+        break;
+    case EXCEPTION_FLT_DIVIDE_BY_ZERO:
+    case EXCEPTION_INT_DIVIDE_BY_ZERO:
+        throw Base::DivisionByZeroError("Division by zero!");
+        break;
+    }
 
-   //switch (code)
-   //{
-   //    case FLT_DIVIDE_BY_ZERO :
-   //       //throw CMyFunkyDivideByZeroException(code, pExp);
-   //       throw Base::DivisionByZeroError("Devision by zero!");
-   //    break;
-   //}
-
-   // general C++ SEH exception for things we don't need to handle separately....
-   throw Base::RuntimeError("my_trans_func()");
+    std::stringstream str;
+    str << "SEH exception of type: " << code;
+    // general C++ SEH exception for things we don't need to handle separately....
+    throw Base::RuntimeError(str.str());
 }
 #endif
+
 void Application::init(int argc, char ** argv)
 {
     try {
@@ -1183,13 +1289,14 @@ void Application::init(int argc, char ** argv)
 #if defined (_MSC_VER) // Microsoft compiler
         std::signal(SIGSEGV,segmentation_fault_handler);
         std::signal(SIGABRT,segmentation_fault_handler);
-        std::set_terminate(my_terminate_handler);
+        std::set_terminate(unhandled_exception_handler);
         std::set_unexpected(unexpection_error_handler);
-//        _set_se_translator(my_trans_func);
 #elif defined(FC_OS_LINUX)
         std::signal(SIGSEGV,segmentation_fault_handler);
 #endif
-
+#if defined(FC_SE_TRANSLATOR)
+        _set_se_translator(my_se_translator_filter);
+#endif
         initTypes();
 
 #if (BOOST_VERSION < 104600) || (BOOST_FILESYSTEM_VERSION == 2)
@@ -1342,10 +1449,10 @@ void Application::initTypes(void)
     new ExceptionProducer<Base::AbortException>;
     new ExceptionProducer<Base::XMLBaseException>;
     new ExceptionProducer<Base::XMLParseException>;
+    new ExceptionProducer<Base::XMLAttributeError>;
     new ExceptionProducer<Base::FileException>;
     new ExceptionProducer<Base::FileSystemError>;
     new ExceptionProducer<Base::BadFormatError>;
-    new ExceptionProducer<Base::MemoryException>;
     new ExceptionProducer<Base::MemoryException>;
     new ExceptionProducer<Base::AccessViolation>;
     new ExceptionProducer<Base::AbnormalProgramTermination>;
@@ -1356,6 +1463,7 @@ void Application::initTypes(void)
     new ExceptionProducer<Base::IndexError>;
     new ExceptionProducer<Base::AttributeError>;
     new ExceptionProducer<Base::RuntimeError>;
+    new ExceptionProducer<Base::BadGraphError>;
     new ExceptionProducer<Base::NotImplementedError>;
     new ExceptionProducer<Base::DivisionByZeroError>;
     new ExceptionProducer<Base::ReferencesError>;
@@ -1366,6 +1474,7 @@ void Application::initTypes(void)
     new ExceptionProducer<Base::UnderflowError>;
     new ExceptionProducer<Base::UnitsMismatchError>;
     new ExceptionProducer<Base::CADKernelError>;
+    new ExceptionProducer<Base::RestoreError>;
 }
 
 void Application::initConfig(int argc, char ** argv)
@@ -1416,6 +1525,10 @@ void Application::initConfig(int argc, char ** argv)
 #   endif
 
     // init python
+#if PY_MAJOR_VERSION >= 3
+    PyImport_AppendInittab ("FreeCAD", init_freecad_module);
+    PyImport_AppendInittab ("__FreeCADBase__", init_freecad_base_module);
+#endif
     mConfig["PythonSearchPath"] = Interpreter().init(argc,argv);
 
     // Parse the options that have impact on the init process
@@ -1426,7 +1539,7 @@ void Application::initConfig(int argc, char ** argv)
     _pConsoleObserverStd = new ConsoleObserverStd();
     Console().AttachObserver(_pConsoleObserverStd);
     if (mConfig["Verbose"] == "Strict")
-        Console().SetMode(ConsoleSingleton::Verbose);
+        Console().UnsetConsoleMode(ConsoleSingleton::Verbose);
 
     // file logging Init ===========================================================
     if (mConfig["LoggingFile"] == "1") {
@@ -1437,48 +1550,55 @@ void Application::initConfig(int argc, char ** argv)
         _pConsoleObserverFile = 0;
 
     // Banner ===========================================================
-    if (!(mConfig["Verbose"] == "Strict"))
-        Console().Message("%s %s, Libs: %s.%sR%s\n%s",mConfig["ExeName"].c_str(),
-                          mConfig["ExeVersion"].c_str(),
-                          mConfig["BuildVersionMajor"].c_str(),
-                          mConfig["BuildVersionMinor"].c_str(),
-                          mConfig["BuildRevision"].c_str(),
-                          mConfig["CopyrightInfo"].c_str());
-    else
-        Console().Message("%s %s, Libs: %s.%sB%s\n",mConfig["ExeName"].c_str(),
-                          mConfig["ExeVersion"].c_str(),
-                          mConfig["BuildVersionMajor"].c_str(),
-                          mConfig["BuildVersionMinor"].c_str(),
-                          mConfig["BuildRevision"].c_str());
-
+    if (!(mConfig["RunMode"] == "Cmd")) {
+        // Remove banner if FreeCAD is invoked via the -c command as regular
+        // Python interpreter
+        if (!(mConfig["Verbose"] == "Strict"))
+            Console().Message("%s %s, Libs: %s.%sR%s\n%s",mConfig["ExeName"].c_str(),
+                              mConfig["ExeVersion"].c_str(),
+                              mConfig["BuildVersionMajor"].c_str(),
+                              mConfig["BuildVersionMinor"].c_str(),
+                              mConfig["BuildRevision"].c_str(),
+                              mConfig["CopyrightInfo"].c_str());
+        else
+            Console().Message("%s %s, Libs: %s.%sB%s\n",mConfig["ExeName"].c_str(),
+                              mConfig["ExeVersion"].c_str(),
+                              mConfig["BuildVersionMajor"].c_str(),
+                              mConfig["BuildVersionMinor"].c_str(),
+                              mConfig["BuildRevision"].c_str());
+    }
     LoadParameters();
 
     auto loglevelParam = _pcUserParamMngr->GetGroup("BaseApp/LogLevels");
     const auto &loglevels = loglevelParam->GetIntMap();
     bool hasDefault = false;
-    for(const auto &v : loglevels) {
-        if(v.first == "Default") {
+    for (const auto &v : loglevels) {
+        if (v.first == "Default") {
 #ifndef FC_DEBUG
-            if(v.second>=0) {
+            if (v.second>=0) {
                 hasDefault = true;
                 Base::Console().SetDefaultLogLevel(v.second);
             }
 #endif
-        }else if(v.first == "DebugDefault") {
+        }
+        else if (v.first == "DebugDefault") {
 #ifdef FC_DEBUG
-            if(v.second>=0) {
+            if (v.second>=0) {
                 hasDefault = true;
                 Base::Console().SetDefaultLogLevel(v.second);
             }
 #endif
-        }else
+        }
+        else {
             *Base::Console().GetLogLevel(v.first.c_str()) = v.second;
+        }
     }
-    if(!hasDefault) {
+
+    if (!hasDefault) {
 #ifdef FC_DEBUG
-        loglevelParam->SetInt("DebugDefault",Base::Console().LogLevel(-1));
+        loglevelParam->SetInt("DebugDefault", Base::Console().LogLevel(-1));
 #else
-        loglevelParam->SetInt("Default",Base::Console().LogLevel(-1));
+        loglevelParam->SetInt("Default", Base::Console().LogLevel(-1));
 #endif
     }
 
@@ -1539,6 +1659,12 @@ void Application::initApplication(void)
     ParameterGrp::handle hGrp = App::GetApplication().GetParameterGroupByPath
        ("User parameter:BaseApp/Preferences/Units");
     UnitsApi::setSchema((UnitSystem)hGrp->GetInt("UserSchema",0));
+    UnitsApi::setDecimals(hGrp->GetInt("Decimals", Base::UnitsApi::getDecimals()));
+
+    // In case we are using fractional inches, get user setting for min unit
+    int denom = hGrp->GetInt("FracInch", Base::QuantityFormat::getDefaultDenominator());
+    Base::QuantityFormat::setDefaultDenominator(denom);
+
 
 #if defined (_DEBUG)
     Console().Log("Application is built with debug information\n");
@@ -1552,7 +1678,7 @@ void Application::initApplication(void)
         ObjectLabelObserver::instance();
     }
     catch (const Base::Exception& e) {
-        Base::Console().Error("%s\n", e.what());
+        e.ReportException();
     }
 }
 
@@ -1619,7 +1745,7 @@ std::list<std::string> Application::processFiles(const std::list<std::string>& f
                     processed.push_back(*it);
                     Base::Console().Log("Command line open: %s.open(u\"%s\")\n",mods.front().c_str(),escapedstr.c_str());
                 }
-                else {
+                else if (file.exists()) {
                     Console().Warning("File format not supported: %s \n", file.filePath().c_str());
                 }
             }
@@ -1642,11 +1768,20 @@ void Application::processCmdLineFiles(void)
 {
     // process files passed to command line
     std::list<std::string> files = getCmdLineFiles();
-    processFiles(files);
+    std::list<std::string> processed = processFiles(files);
 
     if (files.empty()) {
         if (mConfig["RunMode"] == "Exit")
             mConfig["RunMode"] = "Cmd";
+    }
+    else if (processed.empty() && files.size() == 1 && mConfig["RunMode"] == "Cmd") {
+        // In case we are in console mode and the argument is not a file but Python code
+        // then execute it. This is to behave like the standard Python executable.
+        Base::FileInfo file(files.front());
+        if (!file.exists()) {
+            Interpreter().runString(files.front().c_str());
+            mConfig["RunMode"] = "Exit";
+        }
     }
 
     const std::map<std::string,std::string>& cfg = Application::Config();
@@ -2261,7 +2396,7 @@ void Application::ExtractUserPath()
 
 #elif defined(FC_OS_WIN32)
     WCHAR szPath[MAX_PATH];
-    TCHAR dest[MAX_PATH*3];
+    char dest[MAX_PATH*3];
     // Get the default path where we can save our documents. It seems that
     // 'CSIDL_MYDOCUMENTS' doesn't work on all machines, so we use 'CSIDL_PERSONAL'
     // which does the same.
@@ -2365,8 +2500,8 @@ std::string Application::FindHomePath(const char* sCall)
             absPath = path;
     }
     else {
-        // Find the path of the executable. Theoretically, there could  occur a
-        // race condition when using readlink, but we only use  this method to
+        // Find the path of the executable. Theoretically, there could occur a
+        // race condition when using readlink, but we only use this method to
         // get the absolute path of the executable to compute the actual home
         // path. In the worst case we simply get q wrong path and FreeCAD is not
         // able to load its modules.
@@ -2385,7 +2520,7 @@ std::string Application::FindHomePath(const char* sCall)
 #endif
         if (nchars < 0 || nchars >= PATH_MAX)
             throw Base::FileSystemError("Cannot determine the absolute path of the executable");
-        resolved[nchars] = '\0'; // enfore null termination
+        resolved[nchars] = '\0'; // enforce null termination
         absPath = resolved;
     }
 
@@ -2440,12 +2575,17 @@ std::string Application::FindHomePath(const char* call)
 #elif defined (FC_OS_WIN32)
 std::string Application::FindHomePath(const char* sCall)
 {
-    // We have three ways to start this application either use one of the two executables or
-    // import the FreeCAD.pyd module from a running Python session. In the latter case the
-    // Python interpreter is already initialized.
+    // We have several ways to start this application:
+    // * use one of the two executables
+    // * import the FreeCAD.pyd module from a running Python session. In this case the
+    //   Python interpreter is already initialized.
+    // * use a custom dll that links FreeCAD core dlls and that is loaded by its host application
+    //   In this case the calling name should be set to FreeCADBase.dll or FreeCADApp.dll in order
+    //   to locate the correct home directory
     wchar_t szFileName [MAX_PATH];
-    if (Py_IsInitialized()) {
-        GetModuleFileNameW(GetModuleHandle(sCall),szFileName, MAX_PATH-1);
+    QString dll(QString::fromUtf8(sCall));
+    if (Py_IsInitialized() || dll.endsWith(QLatin1String(".dll"))) {
+        GetModuleFileNameW(GetModuleHandleA(sCall),szFileName, MAX_PATH-1);
     }
     else {
         GetModuleFileNameW(0, szFileName, MAX_PATH-1);

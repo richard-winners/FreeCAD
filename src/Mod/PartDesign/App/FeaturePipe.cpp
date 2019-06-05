@@ -208,7 +208,7 @@ App::DocumentObjectExecReturn *Pipe::execute(void)
         /*//build the law functions instead
         else if(Transformation.getValue() == 2) {
             if(ScalingData.getValues().size()<1)
-                return new App::DocumentObjectExecReturn("No valid data given for liinear scaling mode");
+                return new App::DocumentObjectExecReturn("No valid data given for linear scaling mode");
             
             Handle(Law_Linear) lin = new Law_Linear();
             lin->Set(0,1,1,ScalingData[0].x);
@@ -314,6 +314,11 @@ App::DocumentObjectExecReturn *Pipe::execute(void)
             if (boolOp.IsNull())
                 return new App::DocumentObjectExecReturn("Resulting shape is not a solid");
 
+            int solidCount = countSolids(boolOp);
+            if (solidCount > 1) {
+                return new App::DocumentObjectExecReturn("Pipe: Result has multiple solids. This is not supported at this time.");
+            }
+
             boolOp = refineShapeIfActive(boolOp);
             Shape.setValue(getSolid(boolOp));
         }
@@ -327,6 +332,11 @@ App::DocumentObjectExecReturn *Pipe::execute(void)
             // lets check if the result is a solid
             if (boolOp.IsNull())
                 return new App::DocumentObjectExecReturn("Resulting shape is not a solid");
+
+            int solidCount = countSolids(boolOp);
+            if (solidCount > 1) {
+                return new App::DocumentObjectExecReturn("Pipe: Result has multiple solids. This is not supported at this time.");
+            }
 
             boolOp = refineShapeIfActive(boolOp);
             Shape.setValue(getSolid(boolOp));
@@ -460,10 +470,10 @@ void Pipe::buildPipePath(const Part::TopoShape& shape, const std::vector< std::s
                 TopoDS_Iterator it(shape.getShape());
                 for (; it.More(); it.Next()) {
                     if (it.Value().IsNull())
-                        throw Base::Exception("In valid element in spine.");
+                        throw Base::ValueError("In valid element in spine.");
                     if ((it.Value().ShapeType() != TopAbs_EDGE) &&
                         (it.Value().ShapeType() != TopAbs_WIRE)) {
-                        throw Base::Exception("Element in spine is neither an edge nor a wire.");
+                        throw Base::TypeError("Element in spine is neither an edge nor a wire.");
                     }
                 }
 
@@ -475,15 +485,15 @@ void Pipe::buildPipePath(const Part::TopoShape& shape, const std::vector< std::s
                 ShapeAnalysis_FreeBounds::ConnectEdgesToWires(hEdges, Precision::Confusion(), Standard_True, hWires);
                 int len = hWires->Length();
                 if (len != 1)
-                    throw Base::Exception("Spine is not connected.");
+                    throw Base::ValueError("Spine is not connected.");
                 path = hWires->Value(1);
             }
             else {
-                throw Base::Exception("Spine is neither an edge nor a wire.");
+                throw Base::TypeError("Spine is neither an edge nor a wire.");
             }
         }
-        catch (Standard_Failure) {
-            throw Base::Exception("Invalid spine.");
+        catch (Standard_Failure&) {
+            throw Base::CADKernelError("Invalid spine.");
         }
     }
 }

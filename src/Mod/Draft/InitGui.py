@@ -68,15 +68,16 @@ class DraftWorkbench (Workbench):
             FreeCAD.Console.PrintError("Error: Initializing one or more of the Draft modules failed, Draft will not work as expected.\n")
 
         # setup menus
-        self.cmdList = ["Draft_Line","Draft_Wire","Draft_Circle","Draft_Arc","Draft_Ellipse",
+        self.cmdList = ["Draft_Line","Draft_Wire","Draft_Circle","Draft_Arc","Draft_Arc_3Points","Draft_Ellipse",
                         "Draft_Polygon","Draft_Rectangle", "Draft_Text",
                         "Draft_Dimension", "Draft_BSpline","Draft_Point",
-                        "Draft_ShapeString","Draft_Facebinder","Draft_BezCurve","Draft_Label"]
+                        "Draft_ShapeString","Draft_Facebinder","Draft_BezierTools","Draft_Label"]
         self.modList = ["Draft_Move","Draft_Rotate","Draft_Offset",
-                        "Draft_Trimex", "Draft_Upgrade", "Draft_Downgrade", "Draft_Scale",
+                        "Draft_Trimex", "Draft_Join", "Draft_Split", "Draft_Upgrade", "Draft_Downgrade", "Draft_Scale",
                         "Draft_Edit","Draft_WireToBSpline","Draft_AddPoint",
                         "Draft_DelPoint","Draft_Shape2DView","Draft_Draft2Sketch","Draft_Array",
-                        "Draft_PathArray","Draft_Clone","Draft_Drawing","Draft_Mirror","Draft_Stretch"]
+                        "Draft_PathArray", "Draft_PointArray","Draft_Clone",
+                        "Draft_Drawing","Draft_Mirror","Draft_Stretch"]
         self.treecmdList = ["Draft_ApplyStyle","Draft_ToggleDisplayMode","Draft_AddToGroup",
                             "Draft_SelectGroup","Draft_SelectPlane",
                             "Draft_ShowSnapBar","Draft_ToggleGrid","Draft_AutoGroup"]
@@ -92,9 +93,9 @@ class DraftWorkbench (Workbench):
         self.appendToolbar(QT_TRANSLATE_NOOP("Workbench","Draft creation tools"),self.cmdList)
         self.appendToolbar(QT_TRANSLATE_NOOP("Workbench","Draft modification tools"),self.modList)
         self.appendMenu(QT_TRANSLATE_NOOP("draft","&Draft"),self.cmdList+self.modList)
-        self.appendMenu([QT_TRANSLATE_NOOP("draft","&Draft"),QT_TRANSLATE_NOOP("draft","Utilities")],self.utils+self.treecmdList)
-        self.appendMenu([QT_TRANSLATE_NOOP("draft","&Draft"),QT_TRANSLATE_NOOP("draft","Wire tools")],self.lineList)
-        self.appendMenu([QT_TRANSLATE_NOOP("draft","&Draft"),QT_TRANSLATE_NOOP("draft","Snapping")],self.snapList)
+        self.appendMenu([QT_TRANSLATE_NOOP("draft","&Draft"),QT_TRANSLATE_NOOP("Workbench","Utilities")],self.utils+self.treecmdList)
+        self.appendMenu([QT_TRANSLATE_NOOP("draft","&Draft"),QT_TRANSLATE_NOOP("Workbench","Wire tools")],self.lineList)
+        self.appendMenu([QT_TRANSLATE_NOOP("draft","&Draft"),QT_TRANSLATE_NOOP("Workbench","Snapping")],self.snapList)
         if hasattr(FreeCADGui,"draftToolBar"):
             if not hasattr(FreeCADGui.draftToolBar,"loadedPreferences"):
                 FreeCADGui.addPreferencePage(":/ui/preferences-draft.ui","Draft")
@@ -144,3 +145,5 @@ FreeCADGui.addPreferencePage(":/ui/preferences-dxf.ui","Import-Export")
 FreeCADGui.addPreferencePage(":/ui/preferences-dwg.ui","Import-Export")
 FreeCADGui.addPreferencePage(":/ui/preferences-svg.ui","Import-Export")
 FreeCADGui.addPreferencePage(":/ui/preferences-oca.ui","Import-Export")
+
+FreeCAD.__unit_test__ += [ "TestDraft" ]

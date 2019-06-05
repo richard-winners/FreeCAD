@@ -290,7 +290,9 @@ class plane:
                     rot = FreeCADGui.ActiveDocument.ActiveView.getCameraNode().getField("orientation").getValue()
                     upvec = Vector(rot.multVec(coin.SbVec3f(0,1,0)).getValue())
                     vdir = FreeCADGui.ActiveDocument.ActiveView.getViewDirection()
-                    self.alignToPointAndAxis(Vector(0,0,0), vdir.negative(), 0, upvec)
+                    if (vdir.getAngle(self.axis) > 0.001) and (vdir.getAngle(self.axis) < 3.14159):
+                        # don't change the WP if it is already perpendicular to the current view
+                        self.alignToPointAndAxis(Vector(0,0,0), vdir.negative(), 0, upvec)
                 except:
                     pass
             self.weak = True
@@ -302,7 +304,15 @@ class plane:
     def getRotation(self):
         "returns a placement describing the working plane orientation ONLY"
         m = DraftVecUtils.getPlaneRotation(self.u,self.v,self.axis)
-        return FreeCAD.Placement(m)
+        p = FreeCAD.Placement(m)
+        # Arch active container
+        if FreeCAD.GuiUp:
+            import FreeCADGui
+            if FreeCADGui.ActiveDocument.ActiveView:
+                a = FreeCADGui.ActiveDocument.ActiveView.getActiveObject("Arch")
+                if a:
+                    p = a.Placement.inverse().multiply(p)
+        return p
 
     def getPlacement(self,rotated=False):
         "returns the placement of the working plane"
@@ -318,10 +328,27 @@ class plane:
                 self.u.y,self.v.y,self.axis.y,self.position.y,
                 self.u.z,self.v.z,self.axis.z,self.position.z,
                 0.0,0.0,0.0,1.0)
-        return FreeCAD.Placement(m)
+        p = FreeCAD.Placement(m)
+        # Arch active container if based on App Part
+        #if FreeCAD.GuiUp:
+        #    import FreeCADGui
+        #    a = FreeCADGui.ActiveDocument.ActiveView.getActiveObject("Arch")
+        #    if a:
+        #        p = a.Placement.inverse().multiply(p)
+        return p
+
+    def getNormal(self):
+        n = self.axis
+        # Arch active container if based on App Part
+        #if FreeCAD.GuiUp:
+        #    import FreeCADGui
+        #    a = FreeCADGui.ActiveDocument.ActiveView.getActiveObject("Arch")
+        #    if a:
+        #        n = a.Placement.inverse().Rotation.multVec(n)
+        return n
 
     def setFromPlacement(self,pl,rebase=False):
-        "sets the working plane from a placement (rotaton ONLY, unless rebaee=True)"
+        "sets the working plane from a placement (rotaton ONLY, unless rebase=True)"
         rot = FreeCAD.Placement(pl).Rotation
         self.u = rot.multVec(FreeCAD.Vector(1,0,0))
         self.v = rot.multVec(FreeCAD.Vector(0,1,0))

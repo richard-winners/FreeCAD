@@ -29,8 +29,11 @@
 #  \brief DWG file importer & exporter
 #
 #  This module provides support for importing and exporting Autodesk DWG files.
-#  This module is only a thin layer that uses the Teigha Converter application
-#  to convert to/from DXF. Then the real work is done by importDXF
+#  This module is only a thin layer that uses the ODA (formerly Teigha) File
+#  Converter application to convert to/from DXF. Then the real work is done by
+#  importDXF
+
+import six
 
 if open.__module__ == '__builtin__':
     pythonopen = open # to distinguish python built-in open function from the one declared here
@@ -52,7 +55,7 @@ def insert(filename,docname):
         doc = importDXF.insert(dxf,docname)
         return doc
     return
-    
+
 def export(objectslist,filename):
     "called when freecad exports a file"
     import importDXF,os,tempfile
@@ -87,9 +90,9 @@ def getTeighaConverter():
         if os.path.exists(teigha):
             return teigha
     from DraftTools import translate
-    FreeCAD.Console.PrintMessage(translate("draft","Teigha File Converter not found, DWG support is disabled.\n"))
+    FreeCAD.Console.PrintMessage(translate("draft","ODA (formerly Teigha) File Converter not found, DWG support is disabled")+"\n")
     return None
-    
+
 def convertToDxf(dwgfilename):
     "converts a DWG file to DXF"
     import os,tempfile,subprocess,sys     #import os,tempfile
@@ -100,8 +103,8 @@ def convertToDxf(dwgfilename):
         basename = os.path.basename(dwgfilename)
         cmdline = '"%s" "%s" "%s" "ACAD2000" "DXF" "0" "1" "%s"' % (teigha, indir, outdir, basename)
         print("Converting: " + cmdline)
-        if sys.version_info.major < 3:
-            if isinstance(cmdline,unicode):
+        if six.PY2:
+            if isinstance(cmdline,six.text_type):
                 encoding = sys.getfilesystemencoding()
                 cmdline = cmdline.encode(encoding)
         subprocess.call(cmdline,  shell=True)     #os.system(cmdline)
@@ -113,7 +116,7 @@ def convertToDxf(dwgfilename):
             print("Error during DWG to DXF conversion. Try moving the DWG file to a directory path")
             print("without spaces and non-english characters, or try saving to a lower DWG version")
     return None
-    
+
 def convertToDwg(dxffilename,dwgfilename):
     "converts a DXF file to DWG"
     import os,subprocess     #import os
@@ -127,4 +130,3 @@ def convertToDwg(dxffilename,dwgfilename):
         subprocess.call(cmdline,  shell=True)     #os.system(cmdline)
         return dwgfilename
     return None
-    

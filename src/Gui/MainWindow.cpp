@@ -51,7 +51,6 @@
 # include <QWhatsThis>
 #endif
 
-#include <boost/signals.hpp>
 #include <boost/bind.hpp>
 
 // FreeCAD Base header
@@ -147,6 +146,7 @@ struct MainWindowP
     bool whatsthis;
     QString whatstext;
     Assistant* assistant;
+    QMap<QString, QPointer<UrlHandler> > urlHandler;
 };
 
 class MDITabbar : public QTabBar
@@ -333,20 +333,34 @@ MainWindow::MainWindow(QWidget * parent, Qt::WindowFlags f)
 
     // Tree view
     if (hiddenDockWindows.find("Std_TreeView") == std::string::npos) {
-        TreeDockWidget* tree = new TreeDockWidget(0, this);
-        tree->setObjectName
-            (QString::fromLatin1(QT_TRANSLATE_NOOP("QDockWidget","Tree view")));
-        tree->setMinimumWidth(210);
-        pDockMgr->registerDockWindow("Std_TreeView", tree);
+        //work through parameter.
+        ParameterGrp::handle group = App::GetApplication().GetUserParameter().
+              GetGroup("BaseApp")->GetGroup("Preferences")->GetGroup("DockWindows")->GetGroup("TreeView");
+        bool enabled = group->GetBool("Enabled", true);
+        group->SetBool("Enabled", enabled); //ensure entry exists.
+        if (enabled) {
+            TreeDockWidget* tree = new TreeDockWidget(0, this);
+            tree->setObjectName
+                (QString::fromLatin1(QT_TRANSLATE_NOOP("QDockWidget","Tree view")));
+            tree->setMinimumWidth(210);
+            pDockMgr->registerDockWindow("Std_TreeView", tree);
+        }
     }
 
     // Property view
     if (hiddenDockWindows.find("Std_PropertyView") == std::string::npos) {
-        PropertyDockView* pcPropView = new PropertyDockView(0, this);
-        pcPropView->setObjectName
-            (QString::fromLatin1(QT_TRANSLATE_NOOP("QDockWidget","Property view")));
-        pcPropView->setMinimumWidth(210);
-        pDockMgr->registerDockWindow("Std_PropertyView", pcPropView);
+        //work through parameter.
+        ParameterGrp::handle group = App::GetApplication().GetUserParameter().
+              GetGroup("BaseApp")->GetGroup("Preferences")->GetGroup("DockWindows")->GetGroup("PropertyView");
+        bool enabled = group->GetBool("Enabled", true);
+        group->SetBool("Enabled", enabled); //ensure entry exists.
+        if (enabled) {
+            PropertyDockView* pcPropView = new PropertyDockView(0, this);
+            pcPropView->setObjectName
+                (QString::fromLatin1(QT_TRANSLATE_NOOP("QDockWidget","Property view")));
+            pcPropView->setMinimumWidth(210);
+            pDockMgr->registerDockWindow("Std_PropertyView", pcPropView);
+        }
     }
 
     // Selection view
@@ -405,16 +419,24 @@ MainWindow::MainWindow(QWidget * parent, Qt::WindowFlags f)
     //Dag View.
     if (hiddenDockWindows.find("Std_DAGView") == std::string::npos) {
         //work through parameter.
+        // old group name
+        ParameterGrp::handle deprecateGroup = App::GetApplication().GetUserParameter().
+              GetGroup("BaseApp")->GetGroup("Preferences");
+        bool enabled = false;
+        if (deprecateGroup->HasGroup("DAGView")) {
+            deprecateGroup = deprecateGroup->GetGroup("DAGView");
+            enabled = deprecateGroup->GetBool("Enabled", enabled);
+        }
+        // new group name
         ParameterGrp::handle group = App::GetApplication().GetUserParameter().
-              GetGroup("BaseApp")->GetGroup("Preferences")->GetGroup("DAGView");
-        bool enabled = group->GetBool("Enabled", false);
+              GetGroup("BaseApp")->GetGroup("Preferences")->GetGroup("DockWindows")->GetGroup("DAGView");
+        enabled = group->GetBool("Enabled", enabled);
         group->SetBool("Enabled", enabled); //ensure entry exists.
-        if (enabled)
-        {
-          DAG::DockWindow *dagDockWindow = new DAG::DockWindow(nullptr, this);
-          dagDockWindow->setObjectName
-              (QString::fromLatin1(QT_TRANSLATE_NOOP("QDockWidget","DAG View")));
-          pDockMgr->registerDockWindow("Std_DAGView", dagDockWindow);
+        if (enabled) {
+            DAG::DockWindow *dagDockWindow = new DAG::DockWindow(nullptr, this);
+            dagDockWindow->setObjectName
+                (QString::fromLatin1(QT_TRANSLATE_NOOP("QDockWidget","DAG View")));
+            pDockMgr->registerDockWindow("Std_DAGView", dagDockWindow);
         }
     }
 
@@ -975,7 +997,10 @@ void MainWindow::closeEvent (QCloseEvent * e)
         }
 
         /*emit*/ mainWindowClosed();
-        qApp->quit(); // stop the event loop
+        if (this->property("QuitOnClosed").isValid()) {
+            QApplication::closeAllWindows();
+            qApp->quit(); // stop the event loop
+        }
     }
 }
 
@@ -1035,6 +1060,9 @@ void MainWindow::delayedStartup()
         try {
             Base::Interpreter().runString(Base::ScriptFactory().ProduceScript("FreeCADTest"));
         }
+        catch (const Base::SystemExitException&) {
+            throw;
+        }
         catch (const Base::Exception& e) {
             e.ReportException();
         }
@@ -1064,7 +1092,9 @@ void MainWindow::delayedStartup()
     // Create new document?
     ParameterGrp::handle hGrp = WindowParameter::getDefaultParameter()->GetGroup("Document");
     if (hGrp->GetBool("CreateNewDoc", false)) {
-        App::GetApplication().newDocument();
+        if (App::GetApplication().getDocuments().size()==0){
+            App::GetApplication().newDocument();
+        }
     }
 
     if (hGrp->GetBool("RecoveryEnabled", true)) {
@@ -1207,8 +1237,7 @@ QPixmap MainWindow::splashImage() const
 {
     // search in the UserAppData dir as very first
     QPixmap splash_image;
-    QDir dir(QString::fromUtf8(App::Application::Config()["UserAppData"].c_str()));
-    QFileInfo fi(dir.filePath(QString::fromLatin1("pixmaps/splash_image.png")));
+    QFileInfo fi(QString::fromLatin1("images:splash_image.png"));
     if (fi.isFile() && fi.exists())
         splash_image.load(fi.filePath(), "PNG");
 
@@ -1235,10 +1264,30 @@ QPixmap MainWindow::splashImage() const
         QString title = qApp->applicationName();
         QString major   = QString::fromLatin1(App::Application::Config()["BuildVersionMajor"].c_str());
         QString minor   = QString::fromLatin1(App::Application::Config()["BuildVersionMinor"].c_str());
-        QString version = QString::fromLatin1("%1.%2").arg(major).arg(minor);
+        QString version = QString::fromLatin1("%1.%2").arg(major, minor);
+        QString position, fontFamily;
+
+        std::map<std::string,std::string>::const_iterator te = App::Application::Config().find("SplashInfoExeName");
+        std::map<std::string,std::string>::const_iterator tv = App::Application::Config().find("SplashInfoVersion");
+        std::map<std::string,std::string>::const_iterator tp = App::Application::Config().find("SplashInfoPosition");
+        std::map<std::string,std::string>::const_iterator tf = App::Application::Config().find("SplashInfoFont");
+        if (te != App::Application::Config().end())
+            title = QString::fromUtf8(te->second.c_str());
+        if (tv != App::Application::Config().end())
+            version = QString::fromUtf8(tv->second.c_str());
+        if (tp != App::Application::Config().end())
+            position = QString::fromUtf8(tp->second.c_str());
+        if (tf != App::Application::Config().end())
+            fontFamily = QString::fromUtf8(tf->second.c_str());
 
         QPainter painter;
         painter.begin(&splash_image);
+        if (!fontFamily.isEmpty()) {
+            QFont font = painter.font();
+            if (font.fromString(fontFamily))
+                painter.setFont(font);
+        }
+
         QFont fontExe = painter.font();
         fontExe.setPointSize(20);
         QFontMetrics metricExe(fontExe);
@@ -1251,14 +1300,25 @@ QPixmap MainWindow::splashImage() const
         QFontMetrics metricVer(fontVer);
         int v = metricVer.width(version);
 
+        int x = -1, y = -1;
+        QRegExp rx(QLatin1String("(\\d+).(\\d+)"));
+        if (rx.indexIn(position) != -1) {
+            x = rx.cap(1).toInt();
+            y = rx.cap(2).toInt();
+        }
+        else {
+            x = w - (l + v + 10);
+            y = h - 20;
+        }
+
         QColor color;
         color.setNamedColor(QString::fromLatin1(tc->second.c_str()));
         if (color.isValid()) {
             painter.setPen(color);
             painter.setFont(fontExe);
-            painter.drawText(w-(l+v+10),h-20, title);
+            painter.drawText(x, y, title);
             painter.setFont(fontVer);
-            painter.drawText(w-(v+5),h-20, version);
+            painter.drawText(x + (l + 5), y, version);
             painter.end();
         }
     }
@@ -1273,8 +1333,8 @@ void MainWindow::dropEvent (QDropEvent* e)
 {
     const QMimeData* data = e->mimeData();
     if (data->hasUrls()) {
-        // pass no document to let create a new one if needed
-        loadUrls(0, data->urls());
+        // load the files into the active document if there is one, otherwise let create one
+        loadUrls(App::GetApplication().getActiveDocument(), data->urls());
     }
     else {
         QMainWindow::dropEvent(e);
@@ -1457,10 +1517,27 @@ void MainWindow::insertFromMimeData (const QMimeData * mimeData)
     }
 }
 
+void MainWindow::setUrlHandler(const QString &scheme, Gui::UrlHandler* handler)
+{
+    d->urlHandler[scheme] = handler;
+}
+
+void MainWindow::unsetUrlHandler(const QString &scheme)
+{
+    d->urlHandler.remove(scheme);
+}
+
 void MainWindow::loadUrls(App::Document* doc, const QList<QUrl>& url)
 {
     QStringList files;
     for (QList<QUrl>::ConstIterator it = url.begin(); it != url.end(); ++it) {
+        QMap<QString, QPointer<UrlHandler> >::iterator jt = d->urlHandler.find(it->scheme());
+        if (jt != d->urlHandler.end() && !jt->isNull()) {
+            // delegate the loading to the url handler
+            (*jt)->openUrl(doc, *it);
+            continue;
+        }
+
         QFileInfo info((*it).toLocalFile());
         if (info.exists() && info.isFile()) {
             if (info.isSymLink())
@@ -1507,7 +1584,7 @@ void MainWindow::loadUrls(App::Document* doc, const QList<QUrl>& url)
         }
     }
 
-    const char *docName = doc ? doc->getName() : "Unnamed";
+    QByteArray docName = doc ? QByteArray(doc->getName()) : qApp->translate("StdCmdNew","Unnamed").toUtf8();
     SelectModule::Dict dict = SelectModule::importHandler(files);
     // load the files with the associated modules
     for (SelectModule::Dict::iterator it = dict.begin(); it != dict.end(); ++it) {
@@ -1677,7 +1754,7 @@ void StatusBarObserver::OnChange(Base::Subject<const char*> &rCaller, const char
 void StatusBarObserver::Message(const char * m)
 {
     // Send the event to the main window to allow thread-safety. Qt will delete it when done.
-    QString txt = QString::fromLatin1("<font color=\"%1\">%2</font>").arg(this->msg).arg(QString::fromUtf8(m));
+    QString txt = QString::fromLatin1("<font color=\"%1\">%2</font>").arg(this->msg, QString::fromUtf8(m));
     CustomMessageEvent* ev = new CustomMessageEvent(CustomMessageEvent::Msg, txt);
     QApplication::postEvent(getMainWindow(), ev);
 }
@@ -1688,7 +1765,7 @@ void StatusBarObserver::Message(const char * m)
 void StatusBarObserver::Warning(const char *m)
 {
     // Send the event to the main window to allow thread-safety. Qt will delete it when done.
-    QString txt = QString::fromLatin1("<font color=\"%1\">%2</font>").arg(this->wrn).arg(QString::fromUtf8(m));
+    QString txt = QString::fromLatin1("<font color=\"%1\">%2</font>").arg(this->wrn, QString::fromUtf8(m));
     CustomMessageEvent* ev = new CustomMessageEvent(CustomMessageEvent::Wrn, txt);
     QApplication::postEvent(getMainWindow(), ev);
 }
@@ -1699,7 +1776,7 @@ void StatusBarObserver::Warning(const char *m)
 void StatusBarObserver::Error  (const char *m)
 {
     // Send the event to the main window to allow thread-safety. Qt will delete it when done.
-    QString txt = QString::fromLatin1("<font color=\"%1\">%2</font>").arg(this->err).arg(QString::fromUtf8(m));
+    QString txt = QString::fromLatin1("<font color=\"%1\">%2</font>").arg(this->err, QString::fromUtf8(m));
     CustomMessageEvent* ev = new CustomMessageEvent(CustomMessageEvent::Err, txt);
     QApplication::postEvent(getMainWindow(), ev);
 }

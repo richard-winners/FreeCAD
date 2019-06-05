@@ -726,17 +726,6 @@ PyObject* TopoShapeEdgePy::isSeam(PyObject *args)
     }
 }
 
-PyObject* TopoShapeEdgePy::setTolerance(PyObject *args)
-{
-    double tol;
-    if (!PyArg_ParseTuple(args, "d", &tol))
-        return 0;
-    BRep_Builder aBuilder;
-    const TopoDS_Edge& e = TopoDS::Edge(getTopoShapePtr()->getShape());
-    aBuilder.UpdateEdge(e, tol);
-    Py_Return;
-}
-
 PyObject* TopoShapeEdgePy::firstVertex(PyObject *args)
 {
     PyObject* orient = Py_False;
@@ -1015,7 +1004,7 @@ Py::Dict TopoShapeEdgePy::getPrincipalProperties(void) const
 Py::Boolean TopoShapeEdgePy::getClosed(void) const
 {
     if (getTopoShapePtr()->getShape().IsNull())
-        throw Py::Exception("Cannot determine the 'Closed'' flag of an empty shape");
+        throw Py::RuntimeError("Cannot determine the 'Closed'' flag of an empty shape");
     Standard_Boolean ok = BRep_Tool::IsClosed(getTopoShapePtr()->getShape());
     return Py::Boolean(ok ? true : false);
 }

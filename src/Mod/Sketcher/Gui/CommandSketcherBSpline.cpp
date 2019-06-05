@@ -284,13 +284,13 @@ Gui::Action * CmdSketcherCompBSplineShowHideGeometryInformation::createAction(vo
     applyCommandData(this->className(), pcAction);
     
     QAction* c1 = pcAction->addAction(QString());
-    c1->setIcon(Gui::BitmapFactory().pixmap("Sketcher_BSplineDegree"));
+    c1->setIcon(Gui::BitmapFactory().iconFromTheme("Sketcher_BSplineDegree"));
     QAction* c2 = pcAction->addAction(QString());
-    c2->setIcon(Gui::BitmapFactory().pixmap("Sketcher_BSplinePolygon"));
+    c2->setIcon(Gui::BitmapFactory().iconFromTheme("Sketcher_BSplinePolygon"));
     QAction* c3 = pcAction->addAction(QString());
-    c3->setIcon(Gui::BitmapFactory().pixmap("Sketcher_BSplineComb"));
+    c3->setIcon(Gui::BitmapFactory().iconFromTheme("Sketcher_BSplineComb"));
     QAction* c4 = pcAction->addAction(QString());
-    c4->setIcon(Gui::BitmapFactory().pixmap("Sketcher_BSplineKnotMultiplicity"));
+    c4->setIcon(Gui::BitmapFactory().iconFromTheme("Sketcher_BSplineKnotMultiplicity"));
 
     _pcAction = pcAction;
     languageChange();
@@ -360,7 +360,8 @@ void CmdSketcherConvertToNURB::activated(int iMsg)
     Q_UNUSED(iMsg);
 
     // get the selection
-    std::vector<Gui::SelectionObject> selection = getSelection().getSelectionEx();
+    std::vector<Gui::SelectionObject> selection;
+    selection = getSelection().getSelectionEx(0, Sketcher::SketchObject::getClassTypeId());
 
     // only one sketch with its subelements are allowed to be selected
     if (selection.size() != 1) {
@@ -440,7 +441,8 @@ void CmdSketcherIncreaseDegree::activated(int iMsg)
     Q_UNUSED(iMsg);
 
     // get the selection
-    std::vector<Gui::SelectionObject> selection = getSelection().getSelectionEx();
+    std::vector<Gui::SelectionObject> selection;
+    selection = getSelection().getSelectionEx(0, Sketcher::SketchObject::getClassTypeId());
 
     // only one sketch with its subelements are allowed to be selected
     if (selection.size() != 1) {
@@ -452,6 +454,8 @@ void CmdSketcherIncreaseDegree::activated(int iMsg)
     Sketcher::SketchObject* Obj = static_cast<Sketcher::SketchObject*>(selection[0].getObject());
 
     openCommand("Increase degree");
+    
+    bool ignored=false;
 
     for (unsigned int i=0; i<SubNames.size(); i++ ) {
         // only handle edges
@@ -459,16 +463,29 @@ void CmdSketcherIncreaseDegree::activated(int iMsg)
 
             int GeoId = std::atoi(SubNames[i].substr(4,4000).c_str()) - 1;
 
-            Gui::Command::doCommand(
-                Doc,"App.ActiveDocument.%s.increaseBSplineDegree(%d) ",
-                                    selection[0].getFeatName(),GeoId);
-            
-            // add new control points
-            Gui::Command::doCommand(Gui::Command::Doc,
-                                    "App.ActiveDocument.%s.exposeInternalGeometry(%d)",
-                                    selection[0].getFeatName(),
-                                    GeoId);
+            const Part::Geometry * geo = Obj->getGeometry(GeoId);
+
+            if (geo->getTypeId() == Part::GeomBSplineCurve::getClassTypeId()) {
+
+                Gui::Command::doCommand(
+                    Doc,"App.ActiveDocument.%s.increaseBSplineDegree(%d) ",
+                                        selection[0].getFeatName(),GeoId);
+
+                // add new control points
+                Gui::Command::doCommand(Gui::Command::Doc,
+                                        "App.ActiveDocument.%s.exposeInternalGeometry(%d)",
+                                        selection[0].getFeatName(),
+                                        GeoId);
+            }
+            else {
+                ignored=true;
+            }
         }
+    }
+
+    if(ignored) {
+        QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Wrong selection"),
+                             QObject::tr("At least one of the selected objects was not a B-Spline and was ignored."));
     }
 
     commitCommand();
@@ -490,7 +507,7 @@ CmdSketcherIncreaseKnotMultiplicity::CmdSketcherIncreaseKnotMultiplicity()
 {
     sAppModule      = "Sketcher";
     sGroup          = QT_TR_NOOP("Sketcher");
-    sMenuText       = QT_TR_NOOP("Increase degree");
+    sMenuText       = QT_TR_NOOP("Increase knot multiplicity");
     sToolTipText    = QT_TR_NOOP("Increases the multiplicity of the selected knot of a B-spline");
     sWhatsThis      = "Sketcher_BSplineIncreaseKnotMultiplicity";
     sStatusTip      = sToolTipText;
@@ -510,8 +527,9 @@ void CmdSketcherIncreaseKnotMultiplicity::activated(int iMsg)
     #endif
     
     // get the selection
-    std::vector<Gui::SelectionObject> selection = getSelection().getSelectionEx();
-    
+    std::vector<Gui::SelectionObject> selection;
+    selection = getSelection().getSelectionEx(0, Sketcher::SketchObject::getClassTypeId());
+
     // only one sketch with its subelements are allowed to be selected
     if (selection.size() != 1) {
         return;
@@ -670,8 +688,9 @@ void CmdSketcherDecreaseKnotMultiplicity::activated(int iMsg)
     #endif
     
     // get the selection
-    std::vector<Gui::SelectionObject> selection = getSelection().getSelectionEx();
-    
+    std::vector<Gui::SelectionObject> selection;
+    selection = getSelection().getSelectionEx(0, Sketcher::SketchObject::getClassTypeId());
+
     // only one sketch with its subelements are allowed to be selected
     if (selection.size() != 1) {
         return;
@@ -837,9 +856,9 @@ Gui::Action * CmdSketcherCompModifyKnotMultiplicity::createAction(void)
     applyCommandData(this->className(), pcAction);
 
     QAction* c1 = pcAction->addAction(QString());
-    c1->setIcon(Gui::BitmapFactory().pixmap("Sketcher_BSplineIncreaseKnotMultiplicity"));
+    c1->setIcon(Gui::BitmapFactory().iconFromTheme("Sketcher_BSplineIncreaseKnotMultiplicity"));
     QAction* c2 = pcAction->addAction(QString());
-    c2->setIcon(Gui::BitmapFactory().pixmap("Sketcher_BSplineDecreaseKnotMultiplicity"));
+    c2->setIcon(Gui::BitmapFactory().iconFromTheme("Sketcher_BSplineDecreaseKnotMultiplicity"));
 
     _pcAction = pcAction;
     languageChange();

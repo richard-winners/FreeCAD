@@ -26,6 +26,7 @@
 #define APP_FEATUREPYTHON_H
 
 
+#include <Base/Exception.h>
 #include <Base/Writer.h>
 #include <App/GeoFeature.h>
 #include <App/DynamicProperty.h>
@@ -171,8 +172,12 @@ public:
     /** @name Property serialization */
     //@{
     void Save (Base::Writer &writer) const {
-        writer.ObjectName = this->getNameInDocument();
-        props->Save(writer);
+        const char* objname = this->getNameInDocument();
+        // if null then it's not part of the document
+        if (objname) {
+            writer.ObjectName = objname;
+            props->Save(writer);
+        }
     }
     void Restore(Base::XMLReader &reader) {
         props->Restore(reader);
